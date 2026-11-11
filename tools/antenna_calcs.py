@@ -1,6 +1,16 @@
 import math
 
+
 def patch_dimensions(freq_ghz, er, h_mm):
+
+    print("DEBUG freq_ghz =", freq_ghz)
+    print("DEBUG er =", er)
+    print("DEBUG h_mm =", h_mm)
+
+    if freq_ghz <= 0:
+        raise ValueError(
+            f"Invalid frequency: {freq_ghz}"
+        )
 
     f = freq_ghz * 1e9
     c = 3e8
