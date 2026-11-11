@@ -5,10 +5,26 @@ from backend.claude_client import ask_claude
 from tools.ads import ads_status, launch_ads
 from tools.antenna_library import SUBSTRATES
 from tools.antenna_calcs import patch_dimensions
-from tools.hfss_com import create_project, create_patch_antenna
-
+from tools.hfss_com import (
+    create_project,
+    create_patch_antenna,
+    create_monopole_antenna,
+    create_dipole_antenna,
+    create_yagi_uda_antenna_prototype
+)
 app = FastAPI()
 
+
+from pydantic import BaseModel
+
+class YagiPrototypeRequest(BaseModel):
+    frequency_ghz: float = 2.5
+
+class DipoleRequest(BaseModel):
+    frequency_ghz: float = 2.4
+
+class MonopoleRequest(BaseModel):
+    frequency_ghz: float = 2.4
 
 class DesignRequest(BaseModel):
     prompt: str
@@ -118,4 +134,29 @@ def build_patch(req: AntennaRequest):
     return create_patch_antenna(
         dims["width_mm"],
         dims["length_mm"]
+    )
+
+@app.post("/hfss/build_monopole")
+def build_monopole(request: MonopoleRequest):
+
+    result = create_monopole_antenna(
+        frequency_ghz=request.frequency_ghz
+    )
+
+    return result
+
+@app.post("/hfss/build_dipole")
+def build_dipole(request: DipoleRequest):
+
+    return create_dipole_antenna(
+        frequency_ghz=request.frequency_ghz
+    )
+
+@app.post("/hfss/build_yagi_prototype")
+def build_yagi_prototype(
+    request: YagiPrototypeRequest
+):
+
+    return create_yagi_uda_antenna_prototype(
+        frequency_ghz=request.frequency_ghz
     )
