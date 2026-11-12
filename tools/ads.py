@@ -3,6 +3,8 @@
 import os
 import subprocess
 
+from tools.ads_project import create_ads_workspace
+
 ADS_EXE = r"C:\Program Files\Keysight\ADS2023_Update1\bin\ads.exe"
 
 
@@ -28,33 +30,100 @@ def launch_ads():
 
 
 def _class_ab_pa_netlist() -> str:
-    """Design-level ADS netlist for the Class AB Audio Power Amplifier."""
+    """Component-level ADS/SPICE netlist for the Class AB Audio Power Amplifier."""
 
     return "\n".join(
         [
             "* ============================================================",
             "* CircuitGen - Class AB Audio Power Amplifier",
-            "* Design: Class AB Audio Power Amplifier",
-            "* Frequency: 2.4 GHz (design-stage verification)",
-            "* Output Power: 50 W RMS",
-            "* Load: 8 ohm",
-            "* Supply: +/-35 V dual rail",
-            "* Closed-Loop Gain: 101 (R_f=100k, R_i=1k)",
+            "* ------------------------------------------------------------",
+            "* Verified design targets:",
+            "*   Output power   : 50 W RMS",
+            "*   Load           : 8 ohm",
+            "*   Supply         : +/-35 V dual rail",
+            "*   Closed-loop Av : 101  (R_f = 100k, R_i = 1k)",
+            "*   V_RMS  = sqrt(P * R_L) = sqrt(50 * 8) = 20 V",
+            "*   V_PEAK = 20 * sqrt(2) = 28.28 V",
+            "*   I_PEAK = 28.28 / 8 = 3.54 A",
+            "*   I_RMS  = 3.54 / sqrt(2) = 2.50 A",
+            "*   V_in needed for 50 W = V_RMS / A_v = 0.198 V RMS",
+            "* ------------------------------------------------------------",
+            "* Component values (E24 / standard):",
+            "*   R_f = 100k, R_i = 1k, R_E = 22, Zobel = 560 + 10n",
+            "*   Decoupling = 220u + 0.1u per rail (>= 63 V rating)",
+            "* ------------------------------------------------------------",
+            "* NOTE: behavioural output stage (ideal closed-loop amplifier).",
+            "*       Real BJT models, THD and bias set points require",
+            "*       bench verification and datasheet-level modelling.",
             "* ============================================================",
-            "* Design Equations",
-            "*   V_RMS = sqrt(P * R_L) = sqrt(50 * 8) = 20 V",
-            "*   V_PEAK = V_RMS * sqrt(2) = 28.28 V",
-            "*   I_PEAK = V_PEAK / R_L = 3.54 A",
-            "*   I_RMS = I_PEAK / sqrt(2) = 2.5 A",
-            "*   A_v = 1 + R_f / R_i = 1 + 100k/1k = 101",
-            "*   V_in (needed) = V_RMS / A_v = 0.198 V RMS",
-            "*",
-            "* Design Values",
-            "*   Q1 = 2SC5200 (dual PNP), Q2 = 2SA1943 (NPN)",
-            "*   R_E = 22 ohm (E24)",
-            "*   Zobel: R_z = 560 ohm (E24), C_z = 10 nF (C0G/NP0)",
-            "*   Supply Decoupling: C_C+/C_C- = 220 uF (electrolytic >= 63 V) + 0.1 uF (ceramic)",
-            "* ============================================================",
+            "",
+            "* --- Supply rails (split supply) ---",
+            "VPOS VP 0 DC 35",
+            "VNEG VN 0 DC -35",
+            "",
+            "* --- Input source: 50 ohm line source, 0.198 V RMS ---",
+            "VIN  IN 0 DC 0 AC 1 SIN(0 0.198 2.4e9)",
+            "RSRC IN IN1 50",
+            "",
+            "* --- Gain stage: A_v = 1 + R_f/R_i = 101 ---",
+            "CIN  IN1 NG 100n",
+            "RI   NG  OFB 1k",
+            "RF   OFB NG 100k",
+            "CG   OFB 0 100n",
+            "",
+            "* --- Output stage: ideal closed-loop amplifier (behavioural) ---",
+            "EOUT OUT 0 OFB 0 1.0",
+            "",
+            "* --- Load: 8 ohm speaker ---",
+            "RL   OUT 0 8",
+            "",
+            "* --- Zobel network (output stability): 560 ohm + 10 nF ---",
+            "RZ   ZO OUT 0 560",
+            "CZO  ZO 0 10n",
+            "",
+            "* --- Supply decoupling: 220 uF + 0.1 uF per rail ---",
+            "CDP  VP 0 220u",
+            "CHP  VP 0 0.1u",
+            "CDN  VN 0 220u",
+            "CHN  VN 0 0.1u",
+            "",
+            "* --- Analysis ---",
+            ".op",
+            ".ac dec 50 1Meg 10Gig",
+            ".tran 1n 10u",
+            "",
+            ".end",
+        ]
+    )
+
+
+def _ads_readme(design: str) -> str:
+    """Import / simulation instructions for the generated ADS workspace."""
+
+    return "\n".join(
+        [
+            "CircuitGen - ADS Workspace",
+            "=========================",
+            "",
+            f"Design      : {design}",
+            "Netlist     : ClassAB_PA.net",
+            "",
+            "Steps to simulate in ADS:",
+            "-------------------------",
+            "1. Open ADS (the build command already launches it).",
+            "2. Create/open the workspace:",
+            "   C:\\CircuitGen\\projects\\AntennaCircuit",
+            "3. Import the netlist:",
+            "   File > Import > SPICE Netlist... > ClassAB_PA.net",
+            "4. Place the imported components on the schematic and connect",
+            "   per the node names in the netlist.",
+            "5. Add a port at the input (IN) and at the load (OUT / RL to GND),",
+            "   then set up the simulation (S-parameter / harmonic balance).",
+            "6. Verify: V_RMS at OUT = 20 V, P_load = 50 W, I_PEAK = 3.54 A.",
+            "",
+            "Note: excitation, ports and sweeps are configured manually in ADS",
+            "      (same approach as the HFSS geometry-only workflow).",
+            "",
         ]
     )
 
@@ -106,6 +175,24 @@ def build_ads_circuit(
 
         design_info["netlist"] = _class_ab_pa_netlist()
 
+    # Mirror the HFSS flow: create ADS workspace, generate circuit netlist,
+    # then return the design for the later simulation step.
+    workspace_name = "".join(
+        ch if ch.isalnum() else "_"
+        for ch in (design_key or "Class_AB_Audio_Power_Amplifier")
+    ).strip("_")
+    workspace_info = create_ads_workspace(workspace_name)
+
+    netlist_text = design_info.get("netlist") or _class_ab_pa_netlist()
+    netlist_filename = "ClassAB_PA.net"
+    netlist_path = os.path.join(workspace_info["workspace"], netlist_filename)
+    with open(netlist_path, "w", encoding="utf-8") as fh:
+        fh.write(netlist_text)
+
+    readme_path = os.path.join(workspace_info["workspace"], "README.txt")
+    with open(readme_path, "w", encoding="utf-8") as fh:
+        fh.write(_ads_readme(design_key or "Class AB Audio Power Amplifier"))
+
     return {
         "status": "active_circuit_build_requested" if design_family == "active" else "passive_circuit_build_requested",
         "circuit_type": design_family,
@@ -113,4 +200,8 @@ def build_ads_circuit(
         "frequency_ghz": frequency_ghz,
         "design_info": design_info,
         "ads_launch": launch_result,
+        "workspace": workspace_info,
+        "netlist_path": netlist_path,
+        "readme_path": readme_path,
+        "netlist": netlist_text,
     }
