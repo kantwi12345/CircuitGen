@@ -59,6 +59,25 @@ Notes:
 
 ---
 
+## ADS Build Flow (mirrors the HFSS flow)
+
+Per design:
+
+- Workspace: `C:\CircuitGen\projects\<Design_Name>`
+- Component-level netlist: `<Design_Name>.net`
+- `README.txt` with ADS import/simulation steps
+
+Designs available:
+
+- Active: `Class AB Audio Power Amplifier`, `PA`, `LNA`
+- Passive: `Impedance Matching Network`
+
+Verification:
+
+- L-match (50 ohm -> 36.5 ohm @ 2.4 GHz): Zin = 49.89 - 0.21j ohm, |S11| = 0.0024 (-52.6 dB)
+
+---
+
 ## Antenna Generators
 
 ## Patch Antenna
