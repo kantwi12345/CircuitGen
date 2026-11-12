@@ -1,5 +1,7 @@
 from fastapi import FastAPI
+from fastapi.staticfiles import StaticFiles
 from pydantic import BaseModel
+import os
 
 from backend.claude_client import ask_claude
 from tools.ads import ads_status, launch_ads, build_ads_circuit
@@ -13,6 +15,12 @@ from tools.hfss_com import (
     create_yagi_uda_antenna_prototype
 )
 app = FastAPI()
+
+static_dir = os.path.join(
+    os.path.dirname(os.path.dirname(os.path.abspath(__file__))),
+    "static",
+)
+app.mount("/ui", StaticFiles(directory=static_dir, html=True), name="ui")
 
 
 from pydantic import BaseModel

@@ -1,0 +1,100 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>CircuitGen Build Interface</title>
+  <style>
+    body { font-family: Arial, sans-serif; max-width: 720px; margin: 0 auto; padding: 24px; background: #f7f7f8; color: #222; }
+    h1 { font-size: 24px; }
+    .card { background: #fff; border: 1px solid #ddd; border-radius: 8px; padding: 16px; margin-bottom: 20px; }
+    label { display: block; margin: 8px 0 4px; font-weight: bold; font-size: 14px; }
+    select, input { width: 100%; padding: 8px; margin-top: 4px; box-sizing: border-box; }
+    button { margin-top: 12px; padding: 10px 16px; background: #0066cc; color: #fff; border: none; border-radius: 6px; cursor: pointer; font-size: 14px; }
+    button:hover { background: #0052a3; }
+    #result { background: #f0f0f0; border-radius: 6px; padding: 12px; white-space: pre-wrap; word-wrap: break-word; margin-top: 12px; font-family: monospace; font-size: 13px; }
+    .row { display: flex; gap: 12px; }
+  </style>
+</head>
+<body>
+  <h1>CircuitGen Build Interface</h1>
+
+  <div class="card">
+    <h2>Build Antenna in HFSS</h2>
+    <label for="antType">Antenna Type</label>
+    <select id="antType">
+      <option value="patch">Patch</option>
+      <option value="monopole">Monopole</option>
+      <option value="dipole">Dipole</option>
+      <option value="yagi">Yagi</option>
+    </select>
+    <label for="antFreq">Frequency (GHz)</label>
+    <input id="antFreq" type="number" step="0.1" value="2.4">
+    <label for="antSubstrate">Substrate</label>
+    <input id="antSubstrate" type="text" value="FR4">
+    <label for="antThickness">Thickness (mm)</label>
+    <input id="antThickness" type="number" step="0.1" value="1.6">
+    <button id="buildAntBtn">Build Antenna</button>
+  </div>
+
+  <div class="card">
+    <h2>Build Circuit in ADS</h2>
+    <label for="circType">Circuit Type</label>
+    <select id="circType">
+      <option value="passive">Passive</option>
+      <option value="active">Active</option>
+    </select>
+    <label for="circFreq">Frequency (GHz)</label>
+    <input id="circFreq" type="number" step="0.1" value="2.4">
+    <button id="buildCircBtn">Build Circuit</button>
+  </div>
+
+  <div class="card">
+    <h2>Result</h2>
+    <pre id="result">{}</pre>
+  </div>
+
+  <script>
+    const resultEl = document.getElementById('result');
+
+    async function post(path, body) {
+      const r = await fetch(path, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify(body),
+      });
+      return await r.json();
+    }
+
+    document.getElementById('buildAntBtn').addEventListener('click', async () => {
+      const payload = {
+        antenna_type: document.getElementById('antType').value,
+        frequency_ghz: parseFloat(document.getElementById('antFreq').value) || 2.4,
+        substrate: document.getElementById('antSubstrate').value,
+        thickness_mm: parseFloat(document.getElementById('antThickness').value) || 1.6,
+      };
+      resultEl.textContent = 'Building antenna...';
+      try {
+        const res = await post('/hfss/build', payload);
+        resultEl.textContent = JSON.stringify(res, null, 2);
+      } catch (e) {
+        resultEl.textContent = 'ERROR: ' + e;
+      }
+    });
+
+    document.getElementById('buildCircBtn').addEventListener('click', async () => {
+      const payload = {
+        circuit_type: document.getElementById('circType').value,
+        frequency_ghz: parseFloat(document.getElementById('circFreq').value) || 2.4,
+      };
+      resultEl.textContent = 'Building circuit...';
+      try {
+        const res = await post('/ads/build', payload);
+        resultEl.textContent = JSON.stringify(res, null, 2);
+      } catch (e) {
+        resultEl.textContent = 'ERROR: ' + e;
+      }
+    });
+  </script>
+</body>
+</html>
