@@ -600,11 +600,31 @@ def build_ads_circuit(
     if open_in_ads:
         try:
             from tools.ads_attach import attach as _attach
+            from tools.ads_ael import write_macro as _write_macro
+            from tools.ads_attach import play_macro as _play_macro
 
             attach_result = _attach(
                 workspace_info["workspace"],
                 schematic_info["cell"],
             )
+
+            macro_path = os.path.join(
+                os.path.dirname(netlist_path),
+                f"{schematic_info['cell']}.mac",
+            )
+            _write_macro(
+                macro_path,
+                workspace_info["library_name"],
+                schematic_info["cell"],
+                netlist_text,
+            )
+
+            if attach_result.get("status") in ("workspace_opened",
+                                                "workspace_open_unverified",
+                                                "schematic_requested"):
+                play_result = _play_macro(macro_path)
+                attach_result["macro_path"] = macro_path
+                attach_result["macro_play"] = play_result
         except Exception as exc:
             attach_result = {
                 "status": "attach_failed",

@@ -138,6 +138,24 @@ or via the build flow / API: `open_in_ads=True`
 (`POST /ads/build` body, `tools/interface.py build-circuit --open-ads`, or the
 "Attach workspace & create schematic cell in ADS" checkbox in the web UI).
 
+### AEL macro generation (tools/ads_ael.py)
+
+ADS macros are AEL scripts (ADS records them as `*.mac` / `*.dem`). The
+generator emits an AEL script that recreates the netlist as a schematic,
+using the design-editor API found in the ADS AEL sources
+(`de_create_new_schematic_view`, `de_iff_add_component`, `place_instance`,
+`add_wire`, `named_connection`, `db_add_string_parm_to_instance`).
+
+The macro is generated into `<library>/netlists/<cell>.mac` and played back
+with `Tools > Playback Macro...`.
+
+Verified: the macro is written, parsed by ADS and executed (ADS opens the
+schematic view for the cell). **Not yet verified:** the component-placement
+calls place 0 items when run outside an IFF import session - `de_iff_add_component`
+requires the IFF symbol map (`de_iff_initialize_import`), so the remaining
+work is either (a) driving the palette + canvas directly through the GUI, or
+(b) generating an IFF import file.
+
 ---
 `tools/netlist_sim.py` - AC netlist solver (modified nodal analysis)
 

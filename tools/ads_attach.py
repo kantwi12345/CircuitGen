@@ -122,38 +122,52 @@ def _find_menu_item(win, label, timeout=10):
     return None
 
 
-def _click_menu(win, labels):
+def _click_menu(win, labels, attempts=4):
     """Click through a menu path, e.g. ('File', 'Open', 'Workspace...')."""
 
-    win.set_focus()
-    time.sleep(1.0)
+    last_error = None
 
-    for index, label in enumerate(labels):
-        target = None
-        deadline = time.time() + 15
-
-        while time.time() < deadline and target is None:
-            target = _find_menu_item(win, label, timeout=0.6)
-            if target is None and index > 0:
-                # Qt submenus open on hover - hover the parent item
-                parent = _find_menu_item(win, labels[index - 1], timeout=0.5)
-                if parent is not None:
-                    try:
-                        rect = parent.rectangle()
-                        mouse.move(coords=(rect.mid_point().x,
-                                           rect.mid_point().y))
-                    except Exception:
-                        pass
-            time.sleep(0.4)
-
-        if target is None:
-            raise RuntimeError(f"menu item not found: {label}")
-
+    for _ in range(attempts):
         try:
-            target.click_input()
-        except Exception:
-            pass
-        time.sleep(1.8)
+            win.set_focus()
+            time.sleep(1.0)
+
+            for index, label in enumerate(labels):
+                target = None
+                deadline = time.time() + 12
+
+                while time.time() < deadline and target is None:
+                    target = _find_menu_item(win, label, timeout=0.6)
+                    if target is None and index > 0:
+                        # Qt submenus open on hover - hover the parent
+                        parent = _find_menu_item(win, labels[index - 1],
+                                                 timeout=0.5)
+                        if parent is not None:
+                            try:
+                                rect = parent.rectangle()
+                                mouse.move(coords=(rect.mid_point().x,
+                                                   rect.mid_point().y))
+                            except Exception:
+                                pass
+                    time.sleep(0.4)
+
+                if target is None:
+                    raise RuntimeError(f"menu item not found: {label}")
+
+                try:
+                    target.click_input()
+                except Exception:
+                    pass
+                time.sleep(1.6)
+
+            return
+
+        except RuntimeError as exc:
+            last_error = exc
+            send_keys("{ESC}")
+            time.sleep(1.5)
+
+    raise last_error
 
 
 def open_workspace(workspace_dir, timeout=120, desk=None):
@@ -291,6 +305,60 @@ def create_schematic(workspace_dir, cell_name, timeout=90, win=None, desk=None):
         "status": "schematic_requested",
         "workspace": workspace_dir,
         "cell": cell_name,
+    }
+
+
+def play_macro(macro_path, timeout=240, win=None, desk=None):
+    """Play an AEL macro inside ADS via Tools > Playback Macro...."""
+
+    desk = desk or Desktop(backend="uia")
+    win = win or _ads_window(desk)
+    if win is None:
+        win = launch_ads()
+    if win is None:
+        return {"status": "ads_not_running"}
+
+    if not os.path.exists(macro_path):
+        return {"status": "macro_not_found", "macro": macro_path}
+
+    _click_menu(win, ("Tools", "Playback Macro..."))
+    time.sleep(3)
+
+    name_edit = None
+    for window in desk.windows():
+        try:
+            if not window.is_visible() or window.process_id() != win.process_id():
+                continue
+            for ctl in window.descendants(control_type="Edit"):
+                try:
+                    info = ctl.element_info
+                    if info.class_name == "Edit" and \
+                            (info.name or "").lower().startswith("file name"):
+                        name_edit = ctl
+                except Exception:
+                    pass
+        except Exception:
+            pass
+
+    if name_edit is None:
+        return {"status": "macro_file_dialog_not_found"}
+
+    name_edit.set_focus()
+    time.sleep(0.3)
+    send_keys("^a{DELETE}")
+    name_edit.type_keys(macro_path, with_spaces=True)
+    time.sleep(0.5)
+    send_keys("{ENTER}")
+
+    # give ADS time to run the macro
+    deadline = time.time() + timeout
+    while time.time() < deadline:
+        time.sleep(5)
+        break
+
+    return {
+        "status": "macro_played",
+        "macro": macro_path,
     }
 
 
