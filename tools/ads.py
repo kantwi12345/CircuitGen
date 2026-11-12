@@ -29,8 +29,9 @@ def launch_ads():
 
 def build_ads_circuit(
     circuit_type: str = "passive",
+    design: str = "Class AB Audio Power Amplifier",
     frequency_ghz: float = 2.4,
-):
+) -> dict:
 
     # ADS circuit build command handler.
     # NOTE: programmatic ADS COM editor automation is not currently
@@ -39,34 +40,43 @@ def build_ads_circuit(
 
     launch_result = launch_ads()
 
-    if circuit_type.lower() == "active":
+    design_key = (design or "").strip()
+    design_lower = design_key.lower()
 
-        return {
-            "status": "active_circuit_build_requested",
-            "circuit_type": "active",
+    design_family = "passive"
+    if circuit_type.lower() == "active" or design_lower in (
+        "lna",
+        "pa",
+        "class ab audio power amplifier",
+        "classab",
+        "class-ab audio power amplifier",
+    ):
+        design_family = "active"
+
+    design_info = {
+        "design": design_key or "Class AB Audio Power Amplifier",
+        "circuit_type": design_family,
+        "frequency_ghz": frequency_ghz,
+    }
+
+    if design_family == "active":
+        design_info["design_payload"] = {
+            "amplifier": design_key or "Class AB Audio Power Amplifier",
             "frequency_ghz": frequency_ghz,
-            "design": {
-                "amplifier": "Class AB Audio Power Amplifier",
-                "output_power_w": 50,
-                "load_ohm": 8,
-                "supply_v": "+/-35",
-                "closed_loop_gain": 101,
-            },
-            "ads_launch": launch_result,
+            "design_family": "active",
         }
-
-    if circuit_type.lower() == "passive":
-
-        return {
-            "status": "passive_circuit_build_requested",
-            "circuit_type": "passive",
-            "frequency_ghz": frequency_ghz,
-            "ads_launch": launch_result,
-        }
+        design_info["design_payload"].update({
+            "output_power_w": 50,
+            "load_ohm": 8,
+            "supply_v": "+/-35",
+            "closed_loop_gain": 101,
+        })
 
     return {
-        "status": "circuit_type_not_supported",
-        "circuit_type": circuit_type,
+        "status": "active_circuit_build_requested" if design_family == "active" else "passive_circuit_build_requested",
+        "circuit_type": design_family,
+        "design": design_key,
         "frequency_ghz": frequency_ghz,
+        "design_info": design_info,
         "ads_launch": launch_result,
     }
