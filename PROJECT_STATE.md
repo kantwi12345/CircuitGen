@@ -6,9 +6,11 @@ https://github.com/kantwi12345/CircuitGen
 
 ## Project Goal
 
-CircuitGen is an HFSS automation platform built with Python, FastAPI, and PyWin32.
+CircuitGen is an HFSS + ADS automation platform built with Python, FastAPI, and PyWin32.
 
 The system automatically generates antenna geometries in HFSS through COM automation and exposes the functionality through REST APIs.
+
+A parallel automation layer targets ADS for active/passive circuit builds.
 
 ---
 
@@ -23,15 +25,41 @@ Completed:
 - HFSS COM connection
 - HFSS project creation
 - HFSS design creation
+- ADS launch/status/build command layer
+- FastAPI command interface (`/ads/build`, `/hfss/build`)
 
 Main files:
 
 - backend/app.py
 - tools/hfss_com.py
+- tools/ads.py
+- tools/ads_project.py
 
 ---
 
-# Antenna Generators
+## Active Circuit Designs
+
+### Class AB Audio Power Amplifier
+
+Status: Design Complete (build-stage verified)
+
+Design:
+
+- Class: Class AB
+- Output power: 50 W RMS
+- Load: 8 ohm
+- Supply: +/-35 V dual rail
+- Closed-loop gain: 101 (40.09 dB)
+- Design script: tools/... audio_amp_design.m (repo root)
+
+Notes:
+
+- ADS COM automation unavailable -> substituted MATLAB R2025b (build verified, exit 0)
+- Fabrication/simulation -> ADS going forward
+
+---
+
+## Antenna Generators
 
 ## Patch Antenna
 
@@ -126,7 +154,21 @@ API Endpoint:
 
 Implemented:
 
-POST /hfss/create_project
+GET  /health
+
+GET  /tools
+
+POST /design
+
+GET  /ads/status
+
+GET  /ads/launch
+
+POST /ads/build
+
+GET  /hfss/new_project
+
+POST /hfss/create_antenna
 
 POST /hfss/build_patch
 
@@ -136,28 +178,25 @@ POST /hfss/build_dipole
 
 POST /hfss/build_yagi_prototype
 
-POST /hfss/solve
-
-POST /hfss/extract_s11
-
-GET  /hfss/extract_s11_all
+POST /hfss/build
 
 ---
 
-# Updates (v0.2.0)
+# Updates (v0.3.0)
 
-- Added lumped ports and analysis setups (Setup1 + Sweep) to Monopole, Dipole and Yagi generators.
-- Added solver automation (`tools/hfss_results.py`: `solve_antenna`).
-- Added S11 extraction pipeline (`extract_s11` / `extract_all_s11`) with metrics (resonant freq, min S11, -10 dB bandwidth) and CSV export.
-- New endpoints: `/hfss/solve`, `/hfss/extract_s11`, `/hfss/extract_s11_all`.
+- HFSS generators kept geometry-only (no excitation/setup/sweep automation).
+- Active circuit phase: Class AB audio power amplifier designed and verified (50 W RMS, 8 ohm, +/-35 V, A_v = 101).
+- ADS circuit build command layer added (`/ads/build`, tools/ads.py).
+- FastAPI unified build commands added: `/hfss/build` (antenna) and `/ads/build` (circuit).
 
 # Current Challenges
 
-1. Lumped-port automation
-2. Reliable HFSS excitation creation
-3. Automatic solver setup generation
-4. Frequency sweep generation
-5. HFSS result extraction
+1. Lumped-port automation (HFSS) - parked, manual in HFSS later
+2. Reliable HFSS excitation creation - parked, manual later
+3. Automatic solver setup generation - parked, manual later
+4. Frequency sweep generation - parked, manual later
+5. HFSS result extraction - parked, manual later
+6. ADS COM programmatic circuit build - unavailable, substituted with MATLAB design math
 
 ---
 
@@ -165,27 +204,23 @@ GET  /hfss/extract_s11_all
 
 ## Priority 1
 
-S11 Extraction
+ADS Active/Passive Circuit Builds
 
 Goals:
 
-- Return loss plots
-- Resonant frequency
-- Bandwidth
-
----
+- Author ADS circuit from FastAPI command (`/ads/build`)
+- Passive matching networks for HFSS antennas
+- Active amplifier stages (LNA / PA) for HFSS antennas
 
 ## Priority 2
 
-Gain Extraction
+Gain / Radiation Extraction
 
 Goals:
 
 - Peak gain
 - Radiation efficiency
 - Directivity
-
----
 
 ## Priority 3
 
@@ -196,8 +231,6 @@ Goals:
 - Create Setup1 automatically
 - Create sweeps automatically
 - Launch analysis automatically
-
----
 
 ## Priority 4
 
@@ -229,7 +262,7 @@ Planned:
 
 Current Milestone:
 
-v0.1.0
+v0.3.0
 
 Major Features Completed:
 
@@ -239,6 +272,9 @@ Major Features Completed:
 - Monopole Generator
 - Dipole Generator
 - Yagi Prototype Generator
+- ADS Launch / Build Command Layer
+- FastAPI `/ads/build` + `/hfss/build` Commands
+- Class AB Audio Power Amplifier Design
 
 ---
 
@@ -250,13 +286,15 @@ If another AI continues this project:
 2. Read PROJECT_STATE.md
 3. Review backend/app.py
 4. Review tools/hfss_com.py
+5. Review tools/ads.py
 
 Then continue with:
 
-- S11 extraction
-- Gain extraction
-- Solver automation
-- Parameter optimization
+- ADS circuit build implementation (post-COM)
+- Passive matching networks
+- LNA / PA designs
+- S11 / gain extraction
+- Optimization engine
 
 The Yagi dimensions are currently provisional and should be validated against the original HFSS tutorial before production use.
 
