@@ -533,6 +533,7 @@ def build_ads_circuit(
     circuit_type: str = "passive",
     design: str = "Class AB Audio Power Amplifier",
     frequency_ghz: float = 2.4,
+    open_in_ads: bool = False,
 ) -> dict:
 
     # ADS circuit build command handler.
@@ -594,6 +595,21 @@ def build_ads_circuit(
 
     # Open ADS directly on the generated workspace so it shows up in the GUI.
     launch_result = launch_ads(workspace_info)
+
+    attach_result = None
+    if open_in_ads:
+        try:
+            from tools.ads_attach import attach as _attach
+
+            attach_result = _attach(
+                workspace_info["workspace"],
+                schematic_info["cell"],
+            )
+        except Exception as exc:
+            attach_result = {
+                "status": "attach_failed",
+                "error": str(exc),
+            }
     readme_path = os.path.join(workspace_info["workspace"], "README.txt")
     with open(readme_path, "w", encoding="utf-8") as fh:
         fh.write(
@@ -646,5 +662,6 @@ def build_ads_circuit(
         "netlist_path": netlist_path,
         "readme_path": readme_path,
         "report_path": report_path,
+        "attach_result": attach_result,
         "netlist": netlist_text,
     }

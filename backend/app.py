@@ -49,6 +49,7 @@ class ADSBuildRequest(BaseModel):
     circuit_type: str
     design: str = "Class AB Audio Power Amplifier"
     frequency_ghz: float = 2.4
+    open_in_ads: bool = False
 
 
 @app.get("/")
@@ -182,7 +183,8 @@ def build_circuit(req: ADSBuildRequest):
     return build_ads_circuit(
         circuit_type=req.circuit_type,
         design=req.design,
-        frequency_ghz=req.frequency_ghz
+        frequency_ghz=req.frequency_ghz,
+        open_in_ads=req.open_in_ads
     )
 
 

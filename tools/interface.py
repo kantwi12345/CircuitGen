@@ -37,6 +37,7 @@ def build_circuit(
     circuit_type: str,
     design: str = "Class AB Audio Power Amplifier",
     frequency_ghz: float = 2.4,
+    open_in_ads: bool = False,
 ) -> dict:
 
     response = httpx.post(
@@ -45,6 +46,7 @@ def build_circuit(
             "circuit_type": circuit_type,
             "design": design,
             "frequency_ghz": frequency_ghz,
+            "open_in_ads": open_in_ads,
         },
         timeout=300,
     )
@@ -89,11 +91,13 @@ def main(argv=None) -> int:
         required=True,
         choices=["passive", "active"],
     )
-    p_circuit.add_argument(
-        "--design",
-        default="Class AB Audio Power Amplifier",
-    )
+    p_circuit.add_argument("--design", default="Class AB Audio Power Amplifier")
     p_circuit.add_argument("--frequency-ghz", type=float, default=2.4)
+    p_circuit.add_argument(
+        "--open-ads",
+        action="store_true",
+        help="attach the workspace and create the schematic cell in ADS",
+    )
 
     args = parser.parse_args(argv)
 
@@ -114,6 +118,7 @@ def main(argv=None) -> int:
             circuit_type=args.circuit_type,
             design=args.design,
             frequency_ghz=args.frequency_ghz,
+            open_in_ads=args.open_ads,
         )
         print(result)
         return 0

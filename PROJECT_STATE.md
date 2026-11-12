@@ -114,6 +114,30 @@ Consequence: the workspace is generated on disk in the exact ADS 2023 format
 via **File > Open Workspace...**, then creates the schematic cell per the
 documented ADS flow using the generated build sheet (or imports the netlist).
 
+### ADS GUI automation (tools/ads_attach.py)
+
+Because ADS exposes no CLI/COM path, the attach sequence is driven through
+the ADS GUI with pywinauto (UIA backend):
+
+1. Launch ADS (dismissing the "Product Selection" bundle dialog if shown)
+2. `File > Open > Workspace...` -> type the workspace folder -> "Select Folder"
+3. Toolbar **New Schematic** -> cell name -> Create
+
+Verified: the workspace opens in ADS (tree shows the path, ADS rewrites
+`de_sim.cfg` / `hpeesofsim.cfg` on load) and the cell is created on disk as
+`<workspace>_lib/<cell>/schematic/sch.oa` - the same structure as the
+reference `RF_PA_lib` cells.
+
+Usage:
+
+```
+python tools/ads_attach.py --workspace C:\ADS_Projects\LNA_wrk --cell lna
+```
+
+or via the build flow / API: `open_in_ads=True`
+(`POST /ads/build` body, `tools/interface.py build-circuit --open-ads`, or the
+"Attach workspace & create schematic cell in ADS" checkbox in the web UI).
+
 ---
 `tools/netlist_sim.py` - AC netlist solver (modified nodal analysis)
 

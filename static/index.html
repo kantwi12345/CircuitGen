@@ -53,6 +53,7 @@
     </select>
     <label for="circFreq">Frequency (GHz)</label>
     <input id="circFreq" type="number" step="0.1" value="2.4">
+    <label><input type="checkbox" id="circOpenAds" style="width:auto"> Attach workspace &amp; create schematic cell in ADS</label>
     <button id="buildCircBtn">Build Circuit</button>
   </div>
 
@@ -94,6 +95,7 @@
         circuit_type: document.getElementById('circType').value,
         design: document.getElementById('circDesign').value,
         frequency_ghz: parseFloat(document.getElementById('circFreq').value) || 2.4,
+        open_in_ads: document.getElementById('circOpenAds').checked,
       };
       resultEl.textContent = 'Building circuit...';
       try {

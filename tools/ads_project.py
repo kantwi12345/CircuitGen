@@ -242,9 +242,14 @@ def create_ads_workspace(name: str, units: str = "mm", cells=None):
                     f"   File > Import > SPICE Netlist... (see <library>/netlists/)",
                     "",
                     "Note: ADS 2023 on Windows has no command-line or COM way to",
-                    "open a workspace - this attach step is required once per",
-                    "workspace (verified: ads.exe ignores a workspace argument,",
-                    "even for an existing workspace).",
+                    "open a workspace (verified), so the attach step above is",
+                    "needed once per workspace.",
+                    "",
+                    "Alternative: pass open_in_ads=True to the build command",
+                    "(or tick 'Attach workspace & create schematic cell in ADS'",
+                    "in the web UI) - the File > Open > Workspace... and",
+                    "New Schematic steps are then driven automatically by",
+                    "tools/ads_attach.py.",
                     "",
                 ]
             )
