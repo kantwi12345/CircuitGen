@@ -4,8 +4,12 @@ import math
 import os
 import subprocess
 
-from tools.ads_project import create_ads_workspace, sanitize_workspace_name
-from tools.ads_schematic import write_schematic_build_sheet
+from tools.ads_project import (
+    create_ads_workspace,
+    sanitize_workspace_name,
+    open_ads_workspace,
+)
+from tools.ads_schematic import write_schematic_build_sheet, cell_name_for
 
 ADS_EXE = r"C:\Program Files\Keysight\ADS2023_Update1\bin\ads.exe"
 
@@ -17,9 +21,13 @@ def ads_status():
     }
 
 
-def launch_ads():
+def launch_ads(workspace_info: dict = None):
 
     if os.path.exists(ADS_EXE):
+
+        if workspace_info:
+            return open_ads_workspace(workspace_info)
+
         subprocess.Popen([ADS_EXE])
 
         return {
@@ -474,16 +482,16 @@ def _ads_readme(design: str, schematic_info: dict) -> str:
             f"Cell Name   : {schematic_info['cell']}   (no spaces)",
             f"Library     : {schematic_info['library']}",
             "",
-            "STEP 1 - Create the workspace (ADS 2023 wizard)",
-            "------------------------------------------------",
+            "STEP 1 - Attach the workspace in ADS 2023",
+            "---------------------------------------------",
+            "The workspace files are already created on disk. ADS has no",
+            "command-line way to open a workspace (verified), so attach it",
+            "once from the GUI:",
             "1. Open ADS 2023.",
-            "2. Click Create a New Workspace in the Getting Started dialog, or",
-            "   go to File > New > Workspace in the Main Window.",
-            "3. Workspace Name  : see workspace_setup.md (underscores, no spaces)",
-            "4. Directory Path  : see workspace_setup.md (no spaces)",
-            "5. Next -> Libraries: keep Analog/RF checked",
-            "6. Next -> Local design library: <workspace>_lib",
-            "7. Next -> Technology: layout units mm, then Finish",
+            "2. File > Open Workspace... (or the Getting Started dialog).",
+            "3. Select the workspace directory:",
+            f"      {schematic_info['workspace_dir']}",
+            "4. The workspace tree opens with the local library attached.",
             "",
             "STEP 2 - Create the schematic",
             "-----------------------------",
@@ -531,8 +539,6 @@ def build_ads_circuit(
     # NOTE: programmatic ADS COM editor automation is not currently
     # available in this environment; design math is performed with the
     # working substitute tool (MATLAB) while the ADS build is prepared.
-
-    launch_result = launch_ads()
 
     design_key = (design or "").strip()
     design_lower = design_key.lower()
@@ -586,6 +592,8 @@ def build_ads_circuit(
 
     netlist_path = schematic_info["netlist_path"]
 
+    # Open ADS directly on the generated workspace so it shows up in the GUI.
+    launch_result = launch_ads(workspace_info)
     readme_path = os.path.join(workspace_info["workspace"], "README.txt")
     with open(readme_path, "w", encoding="utf-8") as fh:
         fh.write(

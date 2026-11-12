@@ -249,6 +249,8 @@ def write_schematic_build_sheet(
     return {
         "cell": cell,
         "library": library_path,
+        "library_name": workspace_info.get("library_name", ""),
+        "workspace_dir": workspace_info.get("workspace", ""),
         "build_sheet_path": sheet_path,
         "netlist_path": netlist_path,
     }

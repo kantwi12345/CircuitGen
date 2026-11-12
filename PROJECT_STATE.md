@@ -95,8 +95,26 @@ Verification:
 
 ---
 
-## Circuit Simulation Substitute
+## ADS Automation Limits (verified experimentally)
 
+| Route | Result |
+|---|---|
+| ADS COM automation (`Keysight.Ads.*` ProgIDs) | Not registered - no COM server in the registry |
+| `ads.exe <workspace.ads>` | Ignored - ADS never touched the workspace |
+| `ads.exe <workspace_dir>` | Ignored - same result |
+| Windows file association for `.ads` / `.wrk` | Not registered |
+| Authoring a schematic cell | `sch.oa` is binary OpenAccess - not authorable |
+
+Verified by pointing `ads.exe` at the user's own known-good workspace
+(`C:\Users\Hulede\RF_PA_wrk`): ADS did not modify it, so the CLI route is
+unavailable in general, not just for generated workspaces.
+
+Consequence: the workspace is generated on disk in the exact ADS 2023 format
+(cloned file set from the reference workspace) and the user attaches it once
+via **File > Open Workspace...**, then creates the schematic cell per the
+documented ADS flow using the generated build sheet (or imports the netlist).
+
+---
 `tools/netlist_sim.py` - AC netlist solver (modified nodal analysis)
 
 Supported: R, C, L, V, I, E (VCVS), G (VCCS), SPICE + ADS value suffixes
