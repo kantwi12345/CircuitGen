@@ -37,6 +37,8 @@ def build_ads_circuit(
     # available in this environment; design math is performed with the
     # working substitute tool (MATLAB) while the ADS build is prepared.
 
+    launch_result = launch_ads()
+
     if circuit_type.lower() == "active":
 
         return {
@@ -50,6 +52,7 @@ def build_ads_circuit(
                 "supply_v": "+/-35",
                 "closed_loop_gain": 101,
             },
+            "ads_launch": launch_result,
         }
 
     if circuit_type.lower() == "passive":
@@ -58,10 +61,12 @@ def build_ads_circuit(
             "status": "passive_circuit_build_requested",
             "circuit_type": "passive",
             "frequency_ghz": frequency_ghz,
+            "ads_launch": launch_result,
         }
 
     return {
         "status": "circuit_type_not_supported",
         "circuit_type": circuit_type,
         "frequency_ghz": frequency_ghz,
+        "ads_launch": launch_result,
     }
