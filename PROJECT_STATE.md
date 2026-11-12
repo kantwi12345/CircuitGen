@@ -136,7 +136,20 @@ POST /hfss/build_dipole
 
 POST /hfss/build_yagi_prototype
 
+POST /hfss/solve
+
+POST /hfss/extract_s11
+
+GET  /hfss/extract_s11_all
+
 ---
+
+# Updates (v0.2.0)
+
+- Added lumped ports and analysis setups (Setup1 + Sweep) to Monopole, Dipole and Yagi generators.
+- Added solver automation (`tools/hfss_results.py`: `solve_antenna`).
+- Added S11 extraction pipeline (`extract_s11` / `extract_all_s11`) with metrics (resonant freq, min S11, -10 dB bandwidth) and CSV export.
+- New endpoints: `/hfss/solve`, `/hfss/extract_s11`, `/hfss/extract_s11_all`.
 
 # Current Challenges
 

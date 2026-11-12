@@ -160,3 +160,5 @@ def build_yagi_prototype(
     return create_yagi_uda_antenna_prototype(
         frequency_ghz=request.frequency_ghz
     )
+
+

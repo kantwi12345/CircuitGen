@@ -82,6 +82,30 @@ def create_patch_antenna(width_mm, length_mm):
         )
 
         #
+        # Assign FR4 material to substrate
+        #
+        editor.ChangeProperty(
+            [
+                "NAME:AllTabs",
+                [
+                    "NAME:Geometry3DAttributeTab",
+                    [
+                        "NAME:PropServers",
+                        "FR4_Substrate"
+                    ],
+                    [
+                        "NAME:ChangedProps",
+                        [
+                            "NAME:Material",
+                            "Value:=",
+                            "\"FR4_epoxy\""
+                        ]
+                    ]
+                ]
+            ]
+        )
+
+        #
         # Ground Plane
         #
         editor.CreateRectangle(
@@ -89,10 +113,10 @@ def create_patch_antenna(width_mm, length_mm):
                 "NAME:RectangleParameters",
                 "IsCovered:=", True,
                 "XStart:=", "0mm",
-                "YStart:=", "0mm",
+                "YStart:=", "-0.46mm",
                 "ZStart:=", "0mm",
                 "Width:=", f"{substrate_x}mm",
-                "Height:=", f"{substrate_y}mm",
+                "Height:=", f"{substrate_y + 0.46}mm",
                 "WhichAxis:=", "Z"
             ],
             [
@@ -129,20 +153,19 @@ def create_patch_antenna(width_mm, length_mm):
         #
 
         feed_width = 3.0
-        feed_length = 15.0
-
-        feed_x = (substrate_x - feed_width) / 2
-        feed_y = patch_y - feed_length
+        feed_x = 28.5
+        feed_y = 0.0
+        feed_length = 16.0
 
         editor.CreateRectangle(
             [
                 "NAME:RectangleParameters",
                 "IsCovered:=", True,
-                "XStart:=", f"{feed_x}mm",
-                "YStart:=", f"{feed_y}mm",
-                "ZStart:=", f"{substrate_h}mm",
-                "Width:=", f"{feed_width}mm",
-                "Height:=", f"{feed_length}mm",
+                "XStart:=", "28.5mm",
+                "YStart:=", "0mm",
+                "ZStart:=", "1.6mm",
+                "Width:=", "3mm",
+                "Height:=", "16mm",
                 "WhichAxis:=", "Z"
             ],
             [
@@ -159,10 +182,10 @@ def create_patch_antenna(width_mm, length_mm):
                 "NAME:RectangleParameters",
                 "IsCovered:=", True,
                 "XStart:=", "28.5mm",
-                "YStart:=", "-0.46mm",
+                "YStart:=", "0mm",
                 "ZStart:=", "0mm",
-                "Width:=", "3mm",
-                "Height:=", "1.6mm",
+                "Width:=", "1.6mm",
+                "Height:=", "3mm",
                 "WhichAxis:=", "Y"
             ],
             [
@@ -224,116 +247,10 @@ def create_patch_antenna(width_mm, length_mm):
         # Lumped Port
         #
 
-        boundary_module.AssignLumpedPort(
-            [
-                "NAME:1",
-                "Objects:=",
-                ["PortSheet"],
-                "DoDeembed:=",
-                False,
-                "RenormalizeAllTerminals:=",
-                True,
-                [
-                    "NAME:Modes",
-                    [
-                        "NAME:Mode1",
-                        "ModeNum:=",
-                        1,
-                        "UseIntLine:=",
-                        True,
-                        [
-                            "NAME:IntLine",
-                            "Coordinate System:=",
-                            "Global",
-                            "Start:=",
-                            [
-                                "30mm",
-                                "-0.46mm",
-                                "0mm"
-                            ],
-                            "End:=",
-                            [
-                                "30mm",
-                                "-0.46mm",
-                                "1.6mm"
-                            ]
-                        ],
-                        "AlignmentGroup:=",
-                        0,
-                        "CharImp:=",
-                        "Zpi",
-                        "RenormImp:=",
-                        "50ohm"
-                    ]
-                ],
-                "ShowReporterFilter:=",
-                False,
-                "ReporterFilter:=",
-                [True],
-                "Impedance:=",
-                "50ohm"
-            ]
-        )
 
         #
         # Analysis Setup
         #
-        analysis_module = design.GetModule(
-            "AnalysisSetup"
-        )
-
-        analysis_module.InsertSetup(
-            "HfssDriven",
-            [
-                "NAME:Setup1",
-                "SolveType:=", "Single",
-                "Frequency:=", "2.4GHz",
-                "MaxDeltaE:=", 0.1,
-                "MaximumPasses:=", 6,
-                "MinimumPasses:=", 1,
-                "MinimumConvergedPasses:=", 1,
-                "PercentRefinement:=", 30,
-                "IsEnabled:=", True,
-                [
-                    "NAME:MeshLink",
-                    "ImportMesh:=", False
-                ],
-                "BasisOrder:=", 1,
-                "DoLambdaRefine:=", True,
-                "DoMaterialLambda:=", True,
-                "SetLambdaTarget:=", False,
-                "Target:=", 0.3333,
-                "UseMaxTetIncrease:=", False,
-                "DrivenSolverType:=", "Direct Solver",
-                "EnhancedLowFreqAccuracy:=", False,
-                "SaveRadFieldsOnly:=", False,
-                "SaveAnyFields:=", True,
-                "IESolverType:=", "Auto",
-                "LambdaTargetForIESolver:=", 0.15,
-                "UseDefaultLambdaTgtForIESolver:=", True,
-                "IE Solver Accuracy:=", "Balanced",
-                "InfiniteSphereSetup:=", ""
-            ]
-        )
-
-        #
-        # Frequency Sweep
-        #
-        analysis_module.InsertFrequencySweep(
-            "Setup1",
-            [
-                "NAME:Sweep",
-                "IsEnabled:=", True,
-                "RangeType:=", "LinearStep",
-                "RangeStart:=", "1GHz",
-                "RangeEnd:=", "10GHz",
-                "RangeStep:=", "1GHz",
-                "Type:=", "Fast",
-                "SaveFields:=", True,
-                "SaveRadFields:=", False,
-                "GenerateFieldsForAllFreqs:=", True
-            ]
-        )
 
         return {
             "status": "Patch antenna ready for simulation",
@@ -351,9 +268,6 @@ def create_patch_antenna(width_mm, length_mm):
                 "PerfE1",
                 "Rad1"
             ],
-            "excitation": "LumpedPort1",
-            "setup": "Setup1",
-            "sweep": "Sweep"
         }
 
     finally:
@@ -425,7 +339,7 @@ def create_monopole_antenna(frequency_ghz=2.4):
                 "NAME:CylinderParameters",
                 "XCenter:=", "0mm",
                 "YCenter:=", "0mm",
-                "ZCenter:=", "0mm",
+                "ZCenter:=", "1mm",
                 "Radius:=", f"{monopole_radius}mm",
                 "Height:=", f"{monopole_length}mm",
                 "WhichAxis:=", "Z"
@@ -433,6 +347,30 @@ def create_monopole_antenna(frequency_ghz=2.4):
             [
                 "NAME:Attributes",
                 "Name:=", "Monopole"
+            ]
+        )
+
+        editor.AssignMaterial(
+            [
+                "NAME:Selections",
+                "Selections:=", "Monopole"
+            ],
+            [
+                "NAME:Attributes",
+                "MaterialValue:=", "\"pec\"",
+                "SolveInside:=", False
+            ]
+        )
+
+        editor.AssignMaterial(
+            [
+                "NAME:Selections",
+                "Selections:=", "GroundPlane"
+            ],
+            [
+                "NAME:Attributes",
+                "MaterialValue:=", "\"pec\"",
+                "SolveInside:=", False
             ]
         )
 
@@ -448,7 +386,7 @@ def create_monopole_antenna(frequency_ghz=2.4):
                 "YStart:=", "0mm",
                 "ZStart:=", "0mm",
                 "Width:=", "1mm",
-                "Height:=", "2mm",
+                "Height:=", "1mm",
                 "WhichAxis:=", "Y"
             ],
             [
@@ -503,6 +441,8 @@ def create_monopole_antenna(frequency_ghz=2.4):
             ]
         )
 
+
+
         return {
             "status": "Monopole geometry created",
             "frequency_ghz": frequency_ghz,
@@ -554,7 +494,7 @@ def create_dipole_antenna(frequency_ghz=2.4):
         dipole_radius = 1.0
 
         gap_length = 1.0
-        gap_radius = 1.05
+        gap_radius = 1.0
 
         #
         # Dipole
@@ -573,6 +513,18 @@ def create_dipole_antenna(frequency_ghz=2.4):
             [
                 "NAME:Attributes",
                 "Name:=", "Dipole"
+            ]
+        )
+
+        editor.AssignMaterial(
+            [
+                "NAME:Selections",
+                "Selections:=", "Dipole"
+            ],
+            [
+                "NAME:Attributes",
+                "MaterialValue:=", "\"pec\"",
+                "SolveInside:=", False
             ]
         )
 
@@ -627,8 +579,8 @@ def create_dipole_antenna(frequency_ghz=2.4):
                 "YStart:=", "0mm",
                 "ZStart:=", f"-{gap_length/2}mm",
 
-                "Width:=", f"{2*gap_radius}mm",
-                "Height:=", f"{gap_length}mm",
+                "Width:=", f"{gap_length}mm",
+                "Height:=", f"{2*gap_radius}mm",
 
                 "WhichAxis:=", "Y"
             ],
@@ -673,6 +625,8 @@ def create_dipole_antenna(frequency_ghz=2.4):
                 ["AirBox"]
             ]
         )
+
+
 
         return {
             "status": "Dipole geometry created",
@@ -945,6 +899,21 @@ def create_yagi_uda_antenna_prototype(frequency_ghz=2.5):
                 ["AirBox"]
             ]
         )
+
+
+
+        for _obj in ["Reflector", "DrivenElement", "Director1", "Director2", "Director3", "Boom", "FeedCone"]:
+            editor.AssignMaterial(
+                [
+                    "NAME:Selections",
+                    "Selections:=", _obj
+                ],
+                [
+                    "NAME:Attributes",
+                    "MaterialValue:=", "\"pec\"",
+                    "SolveInside:=", False
+                ]
+            )
 
         return {
             "status": "Yagi-Uda prototype geometry created",
