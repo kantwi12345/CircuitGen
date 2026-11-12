@@ -1,0 +1,33 @@
+* ============================================================
+* CircuitGen - Impedance Matching Network (L-match)
+* ------------------------------------------------------------
+* Design targets (ASSUMED load - verify with antenna model):
+*   Frequency      : 2.4 GHz
+*   Source         : 50 ohm
+*   Load           : 36.5 ohm (quarter-wave monopole over ground)
+*   Topology       : shunt inductor + series capacitor
+*     Zc = 22.20 ohm -> C = 3.0 pF
+*     Zl = 82.22 ohm -> L = 5.5 nH
+*   Verification   : |Gamma| approx 0 dB at design frequency
+* ------------------------------------------------------------
+* NOTE: load impedance assumed; re-run with the simulated
+*       antenna port impedance for a production network.
+* ============================================================
+
+* --- 50 ohm source ---
+VTH  IN 0 DC 0 AC 1
+RS   IN  NA 50
+
+* --- Shunt inductor (source side) ---
+LSH  NA 0 5.5n
+
+* --- Series capacitor (load side) ---
+CSE  NA  NL 3.0p
+
+* --- Antenna port impedance ---
+RL   NL 0 36.5
+
+* --- Analysis ---
+.ac dec 50 1Meg 10Gig
+
+.end

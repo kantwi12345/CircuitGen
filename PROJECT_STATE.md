@@ -75,6 +75,26 @@ Designs available:
 Verification:
 
 - L-match (50 ohm -> 36.5 ohm @ 2.4 GHz): Zin = 49.89 - 0.21j ohm, |S11| = 0.0024 (-52.6 dB)
+- LNA (2.4 GHz): optimised + simulated -> Av = 16.11 dB, S11 = -20.20 dB,
+  -3 dB BW = 82.3 MHz (2.336-2.418 GHz), NF estimate 1.34 dB (assumed F_min)
+
+---
+
+## Circuit Simulation Substitute
+
+`tools/netlist_sim.py` - AC netlist solver (modified nodal analysis)
+
+Supported: R, C, L, V, I, E (VCVS), G (VCCS), SPICE + ADS value suffixes
+
+Validated against analytic results:
+
+- VCVS divider: 0.0 dB (expected 0 dB)
+- RC cutoff: -3.01 dB (expected -3.01 dB)
+- Series RLC at resonance: -14.48 dB (analytic -14.63 dB)
+- BJT small-signal: 9.15 dB (analytic gm*R_c = 9.25 dB)
+
+Used by `sim_lna.py` (AC sweep + plot) and `lna_optimize.py` (network
+optimisation against the solver).
 
 ---
 
