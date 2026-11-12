@@ -59,13 +59,28 @@ Notes:
 
 ---
 
-## ADS Build Flow (mirrors the HFSS flow)
+## ADS Build Flow (follows the ADS 2023 GUI process)
 
-Per design:
+Per design, in this order:
 
-- Workspace: `C:\CircuitGen\projects\<Design_Name>`
-- Component-level netlist: `<Design_Name>.net`
-- `README.txt` with ADS import/simulation steps
+1. **Workspace** (`File > New > Workspace` wizard values prepared):
+   - Path `C:\ADS_Projects\<Design_Name>` (underscores, no spaces)
+   - Local design library `<Design_Name>_lib`
+   - Analog/RF libraries, layout units `mm`
+   - `workspace_setup.md` lists every wizard field to enter
+2. **Schematic** (`File > New > Schematic`):
+   - Cell name without spaces (e.g. `lna`, `matching_network`)
+   - Palette: Lumped-Components (R/C/L), Sources (V/I/E/G)
+   - Build sheet lists every part, value, net and ground node
+   - Ctrl+R rotate, Ctrl+W wires, Insert Ground, Ctrl+S save
+3. **Simulation setup**: S-Parameter/DC/Transient, TermG ports, frequency sweep
+
+Artifacts per design:
+
+- `C:\ADS_Projects\<Design>\<Design>_lib\<cell>_build_sheet.md`
+- `C:\ADS_Projects\<Design>\<Design>_lib\netlists\<cell>.net`
+- `C:\ADS_Projects\<Design>\DESIGN_REPORT.md`
+- Versioned copies in `projects\<Design_Name>\`
 
 Designs available:
 

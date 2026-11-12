@@ -4,7 +4,8 @@ import math
 import os
 import subprocess
 
-from tools.ads_project import create_ads_workspace
+from tools.ads_project import create_ads_workspace, sanitize_workspace_name
+from tools.ads_schematic import write_schematic_build_sheet
 
 ADS_EXE = r"C:\Program Files\Keysight\ADS2023_Update1\bin\ads.exe"
 
@@ -461,8 +462,8 @@ def _design_report(
     )
 
 
-def _ads_readme(design: str, netlist_filename: str) -> str:
-    """Import / simulation instructions for the generated ADS workspace."""
+def _ads_readme(design: str, schematic_info: dict) -> str:
+    """Step-by-step ADS 2023 build instructions for the generated workspace."""
 
     return "\n".join(
         [
@@ -470,22 +471,51 @@ def _ads_readme(design: str, netlist_filename: str) -> str:
             "=========================",
             "",
             f"Design      : {design}",
-            f"Netlist     : {netlist_filename}",
+            f"Cell Name   : {schematic_info['cell']}   (no spaces)",
+            f"Library     : {schematic_info['library']}",
             "",
-            "Steps to simulate in ADS:",
-            "-------------------------",
-            "1. Open ADS (the build command already launches it).",
-            "2. Open the workspace folder that contains this file.",
-            "3. Import the netlist:",
-            f"   File > Import > SPICE Netlist... > {netlist_filename}",
-            "4. Place the imported components on the schematic and connect",
-            "   per the node names in the netlist.",
-            "5. Add a port at the input and at the load node, then set up",
-            "   the simulation (S-parameter / harmonic balance).",
-            "6. Verify the design targets listed in the netlist header.",
+            "STEP 1 - Create the workspace (ADS 2023 wizard)",
+            "------------------------------------------------",
+            "1. Open ADS 2023.",
+            "2. Click Create a New Workspace in the Getting Started dialog, or",
+            "   go to File > New > Workspace in the Main Window.",
+            "3. Workspace Name  : see workspace_setup.md (underscores, no spaces)",
+            "4. Directory Path  : see workspace_setup.md (no spaces)",
+            "5. Next -> Libraries: keep Analog/RF checked",
+            "6. Next -> Local design library: <workspace>_lib",
+            "7. Next -> Technology: layout units mm, then Finish",
             "",
-            "Note: excitation, ports and sweeps are configured manually in ADS",
-            "      (same approach as the HFSS geometry-only workflow).",
+            "STEP 2 - Create the schematic",
+            "-----------------------------",
+            "1. Click the New Schematic icon on the top toolbar, or",
+            "   File > New > Schematic.",
+            "2. Select the local library, type the Cell Name (no spaces),",
+            "   click Create Schematic.",
+            "3. Use the Palette drop-down (top left) to place the parts",
+            "   listed in the build sheet.",
+            "4. Press Ctrl+R to rotate a part 90 degrees, Esc to exit",
+            "   placement mode.",
+            "5. Set each value by clicking the parameter text next to the",
+            "   part (e.g. R=50 Ohm).",
+            "6. Press Ctrl+W to wire pin to pin, following the net table.",
+            "7. Insert Ground (triangle icon) on the GND net.",
+            "8. File > Save (Ctrl+S).",
+            "",
+            "STEP 3 - Simulation setup",
+            "--------------------------",
+            "1. Simulation > New Simulation > S-Parameter (or DC/Transient).",
+            "2. Add TermG ports at the input and output nets.",
+            "3. Sweep the frequency range around the design frequency.",
+            "4. Run and review S11 / S21 / power.",
+            "",
+            "Files",
+            "-----",
+            f"Build sheet : {schematic_info['build_sheet_path']}",
+            f"Netlist     : {schematic_info['netlist_path']}",
+            "",
+            "The netlist can be imported instead of manual placement:",
+            "File > Import > SPICE Netlist... (then place/connect per the",
+            "build sheet).",
             "",
         ]
     )
@@ -539,25 +569,29 @@ def build_ads_circuit(
     netlist_text = _design_netlist(design_key, design_family, frequency_ghz)
     design_info["netlist"] = netlist_text
 
-    # Mirror the HFSS flow: create ADS workspace, generate circuit netlist,
-    # then return the design for the later simulation step.
-    workspace_name = "".join(
-        ch if ch.isalnum() else "_"
-        for ch in (design_key or "Class_AB_Audio_Power_Amplifier")
-    ).strip("_")
-    workspace_info = create_ads_workspace(workspace_name)
+    # ADS 2023 flow:
+    #   1. workspace (File > New > Workspace wizard values prepared)
+    #   2. local design library <workspace>_lib
+    #   3. schematic cell with parts / values / wiring / grounds
+    workspace_info = create_ads_workspace(
+        design_key or "Class AB Audio Power Amplifier",
+        units="mm",
+    )
 
-    netlist_filename = f"{workspace_name}.net"
-    netlist_path = os.path.join(workspace_info["workspace"], netlist_filename)
-    with open(netlist_path, "w", encoding="utf-8") as fh:
-        fh.write(netlist_text)
+    schematic_info = write_schematic_build_sheet(
+        workspace_info,
+        design_key or "Class AB Audio Power Amplifier",
+        netlist_text,
+    )
+
+    netlist_path = schematic_info["netlist_path"]
 
     readme_path = os.path.join(workspace_info["workspace"], "README.txt")
     with open(readme_path, "w", encoding="utf-8") as fh:
         fh.write(
             _ads_readme(
                 design_key or "Class AB Audio Power Amplifier",
-                netlist_filename,
+                schematic_info,
             )
         )
 
@@ -570,6 +604,28 @@ def build_ads_circuit(
                 frequency_ghz,
             )
         )
+
+    # Keep a versioned copy of the design package inside the repository.
+    repo_dir = os.path.join(
+        r"C:\CircuitGen\projects",
+        sanitize_workspace_name(design_key or "Class_AB_Audio_Power_Amplifier"),
+    )
+    os.makedirs(repo_dir, exist_ok=True)
+
+    import shutil
+
+    shutil.copyfile(
+        schematic_info["build_sheet_path"],
+        os.path.join(repo_dir, "build_sheet.md"),
+    )
+    shutil.copyfile(
+        netlist_path,
+        os.path.join(repo_dir, os.path.basename(netlist_path)),
+    )
+    shutil.copyfile(
+        report_path,
+        os.path.join(repo_dir, "DESIGN_REPORT.md"),
+    )
 
     return {
         "status": "active_circuit_build_requested" if design_family == "active" else "passive_circuit_build_requested",
