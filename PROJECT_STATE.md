@@ -6,11 +6,13 @@ https://github.com/kantwi12345/CircuitGen
 
 ## Project Goal
 
-CircuitGen is an HFSS + ADS automation platform built with Python, FastAPI, and PyWin32.
+CircuitGen is an HFSS antenna automation platform built with Python,
+FastAPI, and PyWin32. The system automatically generates antenna
+geometries in Ansys Electronics Desktop (HFSS) through COM automation and
+exposes the functionality through REST APIs, a CLI, and a web UI.
 
-The system automatically generates antenna geometries in HFSS through COM automation and exposes the functionality through REST APIs.
-
-A parallel automation layer targets ADS for active/passive circuit builds.
+Geometry-only mode: excitation, analysis setup and frequency sweep are
+configured manually in HFSS after geometry generation.
 
 ---
 
@@ -25,188 +27,23 @@ Completed:
 - HFSS COM connection
 - HFSS project creation
 - HFSS design creation
-- ADS launch/status/build command layer
-- FastAPI command interface (`/ads/build`, `/hfss/build`)
+- HFSS design parameters (set, derive, validate, save, build)
+- HFSS Local Variables (GUI automation)
+- CLI + Web UI
 
 Main files:
 
 - backend/app.py
 - tools/hfss_com.py
-- tools/ads.py
-- tools/ads_project.py
-
----
-
-## Active Circuit Designs
-
-### Class AB Audio Power Amplifier
-
-Status: Design Complete (build-stage verified)
-
-Design:
-
-- Class: Class AB
-- Output power: 50 W RMS
-- Load: 8 ohm
-- Supply: +/-35 V dual rail
-- Closed-loop gain: 101 (40.09 dB)
-- Design script: tools/... audio_amp_design.m (repo root)
-
-Notes:
-
-- ADS COM automation unavailable -> substituted MATLAB R2025b (build verified, exit 0)
-- Fabrication/simulation -> ADS going forward
-
----
-
-## ADS Build Flow (follows the ADS 2023 GUI process)
-
-Per design, in this order:
-
-1. **Workspace** (`File > New > Workspace` wizard values prepared):
-   - Path `C:\ADS_Projects\<Design_Name>` (underscores, no spaces)
-   - Local design library `<Design_Name>_lib`
-   - Analog/RF libraries, layout units `mm`
-   - `workspace_setup.md` lists every wizard field to enter
-2. **Schematic** (`File > New > Schematic`):
-   - Cell name without spaces (e.g. `lna`, `matching_network`)
-   - Palette: Lumped-Components (R/C/L), Sources (V/I/E/G)
-   - Build sheet lists every part, value, net and ground node
-   - Ctrl+R rotate, Ctrl+W wires, Insert Ground, Ctrl+S save
-3. **Simulation setup**: S-Parameter/DC/Transient, TermG ports, frequency sweep
-
-Artifacts per design:
-
-- `C:\ADS_Projects\<Design>\<Design>_lib\<cell>_build_sheet.md`
-- `C:\ADS_Projects\<Design>\<Design>_lib\netlists\<cell>.net`
-- `C:\ADS_Projects\<Design>\DESIGN_REPORT.md`
-- Versioned copies in `projects\<Design_Name>\`
-
-Designs available:
-
-- Active: `Class AB Audio Power Amplifier`, `PA`, `LNA`
-- Passive: `Impedance Matching Network`
-
-Verification:
-
-- L-match (50 ohm -> 36.5 ohm @ 2.4 GHz): Zin = 49.89 - 0.21j ohm, |S11| = 0.0024 (-52.6 dB)
-- LNA (2.4 GHz): optimised + simulated -> Av = 16.11 dB, S11 = -20.20 dB,
-  -3 dB BW = 82.3 MHz (2.336-2.418 GHz), NF estimate 1.34 dB (assumed F_min)
-
----
-
-## ADS Automation Limits (verified experimentally)
-
-| Route | Result |
-|---|---|
-| ADS COM automation (`Keysight.Ads.*` ProgIDs) | Not registered - no COM server in the registry |
-| `ads.exe <workspace.ads>` | Ignored - ADS never touched the workspace |
-| `ads.exe <workspace_dir>` | Ignored - same result |
-| Windows file association for `.ads` / `.wrk` | Not registered |
-| Authoring a schematic cell | `sch.oa` is binary OpenAccess - not authorable |
-
-Verified by pointing `ads.exe` at the user's own known-good workspace
-(`C:\Users\Hulede\RF_PA_wrk`): ADS did not modify it, so the CLI route is
-unavailable in general, not just for generated workspaces.
-
-Consequence: the workspace is generated on disk in the exact ADS 2023 format
-(cloned file set from the reference workspace) and the user attaches it once
-via **File > Open Workspace...**, then creates the schematic cell per the
-documented ADS flow using the generated build sheet (or imports the netlist).
-
-### ADS GUI automation (tools/ads_attach.py)
-
-Because ADS exposes no CLI/COM path, the attach sequence is driven through
-the ADS GUI with pywinauto (UIA backend):
-
-1. Launch ADS (dismissing the "Product Selection" bundle dialog if shown)
-2. `File > Open > Workspace...` -> type the workspace folder -> "Select Folder"
-3. Toolbar **New Schematic** -> cell name -> Create
-
-Verified: the workspace opens in ADS (tree shows the path, ADS rewrites
-`de_sim.cfg` / `hpeesofsim.cfg` on load) and the cell is created on disk as
-`<workspace>_lib/<cell>/schematic/sch.oa` - the same structure as the
-reference `RF_PA_lib` cells.
-
-Usage:
-
-```
-python tools/ads_attach.py --workspace C:\ADS_Projects\LNA_wrk --cell lna
-```
-
-or via the build flow / API: `open_in_ads=True`
-(`POST /ads/build` body, `tools/interface.py build-circuit --open-ads`, or the
-"Attach workspace & create schematic cell in ADS" checkbox in the web UI).
-
-### AEL macro generation (tools/ads_ael.py)
-
-ADS macros are AEL scripts (ADS records them as `*.mac` / `*.dem`). The
-generator emits an AEL script that recreates the netlist as a schematic,
-using the design-editor API found in the ADS AEL sources
-(`de_create_new_schematic_view`, `de_iff_add_component`, `place_instance`,
-`add_wire`, `named_connection`, `db_add_string_parm_to_instance`).
-
-The macro is generated into `<library>/netlists/<cell>.mac` and played back
-with `Tools > Playback Macro...`.
-
-Verified: the macro is written, parsed by ADS and executed (ADS opens the
-schematic view for the cell). **Not yet verified:** the component-placement
-calls place 0 items when run outside an IFF import session - `de_iff_add_component`
-requires the IFF symbol map (`de_iff_initialize_import`), so the remaining
-work is either (a) driving the palette + canvas directly through the GUI, or
-(b) generating an IFF import file.
-
----
-`tools/netlist_sim.py` - AC netlist solver (modified nodal analysis)
-
-Supported: R, C, L, V, I, E (VCVS), G (VCCS), SPICE + ADS value suffixes
-
-Validated against analytic results:
-
-- VCVS divider: 0.0 dB (expected 0 dB)
-- RC cutoff: -3.01 dB (expected -3.01 dB)
-- Series RLC at resonance: -14.48 dB (analytic -14.63 dB)
-- BJT small-signal: 9.15 dB (analytic gm*R_c = 9.25 dB)
-
-Used by `sim_lna.py` (AC sweep + plot) and `lna_optimize.py` (network
-optimisation against the solver).
-
----
-
-## ADS Circuit Design Parameters (set before building)
-
-`tools/ads_design.py` - the ADS mirror of the HFSS design-parameter stage.
-
-Set: name, circuit type (active/passive), design, frequency, output power,
-load, supply rails, closed-loop gain.
-
-Derived: V_rms, V_peak, I_peak, I_rms, supply headroom, required input
-level, plus the per-design values (LNA match network + simulated
-performance, matching-network L/C, PA swing).
-
-Designs: `Class AB Audio Power Amplifier`, `PA`, `LNA`,
-`Impedance Matching Network`.
-
-Endpoints:
-
-- `POST /ads/design/params` - set + derive + validate + save
-- `GET  /ads/design/params` - list saved sets
-- `GET  /ads/design/params/{name}` - load one set
-- `POST /ads/design/build` - build workspace + library + netlist + build
-  sheet + AEL macro + design report (optionally attach in ADS)
-
-CLI:
-
-```
-python tools/interface.py ads-design-params --name pa_50w_8ohm --design "Class AB Audio Power Amplifier"
-python tools/interface.py ads-list-designs
-python tools/interface.py ads-build-circuit --design pa_50w_8ohm --open-ads
-```
-
-Web UI: panel "3. Build Circuit in ADS" - set the parameters, save, then
-build the saved design (with an option to attach it in ADS).
-
-Saved sets live in `projects/designs/ads_*.json`.
+- tools/patch_builder.py
+- tools/antenna_calcs.py
+- tools/antenna_library.py
+- tools/design_params.py
+- tools/hfss_vars.py
+- tools/hfss_sim.py
+- tools/hfss_launch.py
+- tools/hfss_project.py
+- tools/interface.py
 
 ---
 
@@ -230,9 +67,9 @@ Endpoints:
 - `GET  /design/params` - list saved sets
 - `GET  /design/params/{name}` - load one set
 - `POST /design/build` - build the HFSS model from a saved set
-- `POST /hfss/build` - accepts a saved `design` name, or derives a parameter
-  set from the request and builds from it (the parameter set comes back with
-  the result)
+- `POST /hfss/build` - accepts a saved `design` name, or derives a
+  parameter set from the request and builds from it (the parameter set
+  comes back with the result)
 
 CLI:
 
@@ -402,12 +239,6 @@ GET  /tools
 
 POST /design
 
-GET  /ads/status
-
-GET  /ads/launch
-
-POST /ads/build
-
 GET  /hfss/new_project
 
 POST /hfss/create_antenna
@@ -422,14 +253,21 @@ POST /hfss/build_yagi_prototype
 
 POST /hfss/build
 
+POST /design/params
+
+GET  /design/params
+
+GET  /design/params/{name}
+
+POST /design/build
+
 ---
 
-# Updates (v0.3.0)
+# Updates (HFSS-only focus)
 
 - HFSS generators kept geometry-only (no excitation/setup/sweep automation).
-- Active circuit phase: Class AB audio power amplifier designed and verified (50 W RMS, 8 ohm, +/-35 V, A_v = 101).
-- ADS circuit build command layer added (`/ads/build`, tools/ads.py).
-- FastAPI unified build commands added: `/hfss/build` (antenna) and `/ads/build` (circuit).
+- All ADS/circuit-related work removed; focus is HFSS antenna automation.
+- Antenna types: patch, monopole, dipole, yagi.
 
 # Current Challenges
 
@@ -438,7 +276,6 @@ POST /hfss/build
 3. Automatic solver setup generation - parked, manual later
 4. Frequency sweep generation - parked, manual later
 5. HFSS result extraction - parked, manual later
-6. ADS COM programmatic circuit build - unavailable, substituted with MATLAB design math
 
 ---
 
@@ -446,13 +283,12 @@ POST /hfss/build
 
 ## Priority 1
 
-ADS Active/Passive Circuit Builds
+HFSS Antenna Geometry
 
 Goals:
 
-- Author ADS circuit from FastAPI command (`/ads/build`)
-- Passive matching networks for HFSS antennas
-- Active amplifier stages (LNA / PA) for HFSS antennas
+- Parametric Yagi (element lengths/spacing from lambda0)
+- Additional antenna types (loop, bow-tie, helical, horn, arrays)
 
 ## Priority 2
 
@@ -500,7 +336,7 @@ Planned:
 
 Current Milestone:
 
-v0.4.0
+v0.4.0 (HFSS-only)
 
 Major Features Completed:
 
@@ -510,18 +346,9 @@ Major Features Completed:
 - Monopole Generator (parametric, frequency-driven)
 - Dipole Generator (parametric, frequency-driven)
 - Yagi Prototype Generator
-- ADS Launch / Build Command Layer
-- FastAPI /ads/build + /hfss/build Commands
-- Design Parameters (HFSS + ADS) - set, derive, validate, save, build
+- Design Parameters (HFSS) - set, derive, validate, save, build
 - HFSS Local Variables (Design Properties -> Local Variables)
-- AC Netlist Simulator (MNA, validated)
-- LNA Synthesis + Optimization + Simulation (16.11 dB, -20.20 dB, 82.3 MHz, 1.34 dB)
-- Impedance Matching Network (50 ohm -> 36.5 ohm, |S11| -52.6 dB)
-- Schematic Diagrams (Class AB PA, LNA, Impedance Matching Network)
 - Web Build Interface + CLI + REST API
-- ADS Workspace Generation (real ADS 2023 format)
-- ADS GUI Automation (workspace attach + schematic cell creation)
-- ADS AEL Macro Generation + Playback
 - Comprehensive README documentation
 
 ---
@@ -534,145 +361,12 @@ If another AI continues this project:
 2. Read PROJECT_STATE.md
 3. Review backend/app.py
 4. Review tools/hfss_com.py
-5. Review tools/ads.py
 
 Then continue with:
 
-- ADS circuit build implementation (post-COM)
-- Passive matching networks
-- LNA / PA designs
+- Parametric Yagi (element lengths/spacing from lambda0)
+- Additional antenna types
 - S11 / gain extraction
 - Optimization engine
 
 The Yagi dimensions are currently provisional and should be validated against the original HFSS tutorial before production use.
----
-
-# ADS Automation Status (verified experimentally)
-
-## What works (automated end to end)
-
-- Workspace creation in the exact ADS 2023 format (cloned from a reference
-  workspace): `workspace.ads`, `lib.defs`, `cds.lib`, `saved.wrkstate`,
-  `fileRefs.json`, `navigator.opt`, `*.prf`, `dds.cfg`, `de_sim.cfg`,
-  `hpeesofsim.cfg`, `dc_annotation_options.xml`, `default.pinproperties`
-- Local library `<ws>_lib` with `.oalib`, `netlists/<cell>.net`,
-  `<cell>_build_sheet.md`
-- ADS launch (dismissing the "Product Selection" bundle dialog if shown)
-- `File > Open > Workspace...` -> type the workspace folder -> "Select Folder"
-  (verified: ADS rewrites `de_sim.cfg` / `hpeesofsim.cfg` on load)
-- Toolbar "New Schematic" -> cell name -> Create
-  (verified: `<ws>_lib/<cell>/schematic/sch.oa` is created on disk)
-- AEL macro generation and playback (`Tools > Playback Macro...`) -
-  the macro is written, parsed by ADS and executed (ADS opens the
-  schematic view for the cell)
-
-## What does NOT work (verified)
-
-| Route | Result |
-|---|---|
-| ADS COM automation (`Keysight.Ads.*` ProgIDs) | Not registered - no COM server in the registry |
-| `ads.exe <workspace.ads>` | Ignored - ADS never touched the workspace |
-| `ads.exe <workspace_dir>` | Ignored - same result |
-| Windows file association for `.ads` / `.wrk` | Not registered |
-| Authoring a schematic cell | `sch.oa` is binary OpenAccess - not authorable |
-| `de_iff_add_component` from a macro | Places 0 items (needs the IFF symbol map) |
-| `File > Import > SPICE Netlist...` | Not in the Import menu in ADS 2023 |
-| `File > Import > Design...` | Requires an ADS design file (.dsn) - binary/undocumented |
-
-Verified by pointing `ads.exe` at the user's own known-good workspace
-(`C:\Users\Hulede\RF_PA_wrk`): ADS did not modify it, so the CLI route is
-unavailable in general, not just for generated workspaces.
-
-Consequence: the workspace is generated on disk in the exact ADS 2023 format
-(cloned file set from the reference workspace) and the user attaches it once
-via **File > Open Workspace...**, then creates the schematic cell per the
-documented ADS flow using the generated build sheet (or imports the netlist).
-
-## Remaining work for full one-click schematic automation
-
-1. **IFF import file** (Option B): ADS's IFF import machinery
-   (`de_iff_initialize_import`, `de_iff_add_component`, etc.) is the
-   native schematic-import path. Generating an IFF file from our
-   netlist requires learning the IFF record grammar from the exporter
-   (`iffexport.ael`, 275 KB of fputs records) - a substantial task.
-2. **GUI palette + canvas automation** (Option C): drive the palette
-   tree (Resistor, Capacitor, Inductor, DC Voltage Source), click the
-   canvas to place, edit the value text, and draw wires with Ctrl+W.
-   Feasible but fragile (pin coordinates, value-edit dialogs).
-3. **One-time macro recording (30 s, user-driven)**: record one
-   resistor placement, then template it. Fastest path to a working
-   full-schematic macro.
-
-## Next priorities
-
-1. Close the schematic-content gap (Option 3 above is the fastest)
-2. Feed the HFSS antenna port impedance into the passive matching network
-3. LNA / PA designs for the HFSS antennas
-4. Optimization engine
----
-
-# ADS Automation Status (verified experimentally)
-
-## What works (automated end to end)
-
-- Workspace creation in the exact ADS 2023 format (cloned from a reference
-  workspace): workspace.ads, lib.defs, cds.lib, saved.wrkstate, fileRefs.json,
-  navigator.opt, *.prf, dds.cfg, de_sim.cfg, hpeesofsim.cfg,
-  dc_annotation_options.xml, default.pinproperties
-- Local library <ws>_lib with .oalib, netlists/<cell>.net,
-  <cell>_build_sheet.md
-- ADS launch (dismissing the "Product Selection" bundle dialog if shown)
-- File > Open > Workspace... -> type the workspace folder -> "Select Folder"
-  (verified: ADS rewrites de_sim.cfg / hpeesofsim.cfg on load)
-- Toolbar "New Schematic" -> cell name -> Create
-  (verified: <ws>_lib/<cell>/schematic/sch.oa is created on disk)
-- AEL macro generation and playback (Tools > Playback Macro...) - the macro
-  is written, parsed by ADS and executed (ADS opens the schematic view for
-  the cell)
-
-## What does NOT work (verified)
-
-| Route | Result |
-|---|---|
-| ADS COM automation (Keysight.Ads.* ProgIDs) | Not registered - no COM server in the registry |
-| ads.exe <workspace.ads> | Ignored - ADS never touched the workspace |
-| ads.exe <workspace_dir> | Ignored - same result |
-| Windows file association for .ads / .wrk | Not registered |
-| Authoring a schematic cell | sch.oa is binary OpenAccess - not authorable |
-| de_iff_add_component from a macro | Places 0 items (needs the IFF symbol map) |
-| File > Import > SPICE Netlist... | Not in the Import menu in ADS 2023 |
-| File > Import > Design... | Requires an ADS design file (.dsn) - binary/undocumented |
-
-Verified by pointing ads.exe at the user's own known-good workspace
-(C:\Users\Hulede\RF_PA_wrk): ADS did not modify it, so the CLI route is
-unavailable in general, not just for generated workspaces.
-
-Consequence: the workspace is generated on disk in the exact ADS 2023 format
-(cloned file set from the reference workspace) and the user attaches it once
-via File > Open Workspace..., then creates the schematic cell per the
-documented ADS flow using the generated build sheet (or imports the netlist).
-
-## Remaining work for full one-click schematic automation
-
-1. IFF import file (Option B): ADS's IFF import machinery is the native
-   schematic-import path. Generating an IFF file from our netlist requires
-   learning the IFF record grammar from the exporter (iffexport.ael,
-   275 KB of fputs records) - a substantial task.
-2. GUI palette + canvas automation (Option C): drive the palette tree
-   (Resistor, Capacitor, Inductor, DC Voltage Source), click the canvas to
-   place, edit the value text, and draw wires with Ctrl+W. Feasible but
-   fragile (pin coordinates, value-edit dialogs).
-3. One-time macro recording (30 s, user-driven): record one resistor
-   placement, then template it. Fastest path to a working full-schematic
-   macro.
-
-## Next priorities
-
-1. Close the schematic-content gap (Option 3 above is the fastest)
-2. Feed the HFSS antenna port impedance into the passive matching network
-3. LNA / PA designs for the HFSS antennas
-4. Optimization engine
-
-Author: Michael Antwi
-Author: Michael Antwi
-Author: Michael Antwi

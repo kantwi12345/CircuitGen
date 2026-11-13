@@ -13,7 +13,6 @@
     button { margin-top: 12px; padding: 10px 16px; background: #0066cc; color: #fff; border: none; border-radius: 6px; cursor: pointer; font-size: 14px; }
     button:hover { background: #0052a3; }
     #result { background: #f0f0f0; border-radius: 6px; padding: 12px; white-space: pre-wrap; word-wrap: break-word; margin-top: 12px; font-family: monospace; font-size: 13px; }
-    .row { display: flex; gap: 12px; }
   </style>
 </head>
 <body>
@@ -70,41 +69,6 @@
   </div>
 
   <div class="card">
-    <h2>3. Build Circuit in ADS</h2>
-    <label for="adpName">Design Name</label>
-    <input id="adpName" type="text" value="pa_50w_8ohm">
-    <label for="adpType">Circuit Type</label>
-    <select id="adpType">
-      <option value="active">Active</option>
-      <option value="passive">Passive</option>
-    </select>
-    <label for="adpDesign">Design</label>
-    <select id="adpDesign">
-      <option value="Class AB Audio Power Amplifier">Class AB Audio Power Amplifier</option>
-      <option value="PA">PA</option>
-      <option value="LNA">LNA</option>
-      <option value="Impedance Matching Network">Impedance Matching Network</option>
-    </select>
-    <label for="adpFreq">Frequency (GHz)</label>
-    <input id="adpFreq" type="number" step="0.1" value="2.4">
-    <label for="adpPower">Output Power (W RMS)</label>
-    <input id="adpPower" type="number" step="1" value="50">
-    <label for="adpLoad">Load (ohm)</label>
-    <input id="adpLoad" type="number" step="0.1" value="8">
-    <label for="adpSupply">Supply (+/-V)</label>
-    <input id="adpSupply" type="number" step="0.5" value="35">
-    <label for="adpGain">Closed-loop Gain</label>
-    <input id="adpGain" type="number" step="1" value="101">
-    <button id="setAdsParamsBtn">Set ADS Design Parameters</button>
-    <button id="loadAdsDesignsBtn" style="background:#555">Refresh Saved ADS Designs</button>
-    <label for="adsDesignName">Build from saved ADS design</label>
-    <select id="adsDesignName"></select>
-    <button id="buildAdsDesignBtn" style="background:#555">Build Saved ADS Design</button>
-    <label><input type="checkbox" id="adsOpenAds" style="width:auto"> Attach workspace &amp; create cell in ADS</label>
-    <button id="buildCircBtn">Build Circuit (direct)</button>
-  </div>
-
-  <div class="card">
     <h2>Result</h2>
     <pre id="result">{}</pre>
   </div>
@@ -120,6 +84,25 @@
       });
       return await r.json();
     }
+
+    async function loadDesigns() {
+      try {
+        const r = await fetch('/design/params');
+        const data = await r.json();
+        const select = document.getElementById('designName');
+        select.innerHTML = '';
+        (data.designs || []).forEach(d => {
+          const opt = document.createElement('option');
+          opt.value = d.name;
+          opt.textContent = `${d.name} (${d.antenna_type}, ${d.frequency_ghz} GHz, ${d.substrate})`;
+          select.appendChild(opt);
+        });
+      } catch (e) {
+        console.error(e);
+      }
+    }
+
+    loadDesigns();
 
     document.getElementById('setParamsBtn').addEventListener('click', async () => {
       const payload = {
@@ -162,25 +145,6 @@
       }
     });
 
-    async function loadDesigns() {
-      try {
-        const r = await fetch('/design/params');
-        const data = await r.json();
-        const select = document.getElementById('designName');
-        select.innerHTML = '';
-        (data.designs || []).forEach(d => {
-          const opt = document.createElement('option');
-          opt.value = d.name;
-          opt.textContent = `${d.name} (${d.antenna_type}, ${d.frequency_ghz} GHz, ${d.substrate})`;
-          select.appendChild(opt);
-        });
-      } catch (e) {
-        console.error(e);
-      }
-    }
-
-    loadDesigns();
-
     document.getElementById('buildAntBtn').addEventListener('click', async () => {
       const payload = {
         antenna_type: document.getElementById('antType').value,
@@ -191,85 +155,6 @@
       resultEl.textContent = 'Building antenna...';
       try {
         const res = await post('/hfss/build', payload);
-        resultEl.textContent = JSON.stringify(res, null, 2);
-      } catch (e) {
-        resultEl.textContent = 'ERROR: ' + e;
-      }
-    });
-
-    document.getElementById('setAdsParamsBtn').addEventListener('click', async () => {
-      const payload = {
-        name: document.getElementById('adpName').value,
-        circuit_type: document.getElementById('adpType').value,
-        design: document.getElementById('adpDesign').value,
-        frequency_ghz: parseFloat(document.getElementById('adpFreq').value) || 2.4,
-        output_power_w: parseFloat(document.getElementById('adpPower').value) || 50,
-        load_ohm: parseFloat(document.getElementById('adpLoad').value) || 8,
-        supply_v: parseFloat(document.getElementById('adpSupply').value) || 35,
-        closed_loop_gain: parseFloat(document.getElementById('adpGain').value) || 101,
-      };
-      resultEl.textContent = 'Deriving ADS design parameters...';
-      try {
-        const res = await post('/ads/design/params', payload);
-        resultEl.textContent = JSON.stringify(res, null, 2);
-        await loadAdsDesigns();
-      } catch (e) {
-        resultEl.textContent = 'ERROR: ' + e;
-      }
-    });
-
-    document.getElementById('loadAdsDesignsBtn').addEventListener('click', async () => {
-      await loadAdsDesigns();
-      resultEl.textContent = 'Saved ADS designs refreshed.';
-    });
-
-    document.getElementById('buildAdsDesignBtn').addEventListener('click', async () => {
-      const name = document.getElementById('adsDesignName').value;
-      if (!name) {
-        resultEl.textContent = 'No saved ADS design selected.';
-        return;
-      }
-      resultEl.textContent = 'Building ADS circuit...';
-      try {
-        const res = await post('/ads/design/build', {
-          name: name,
-          open_in_ads: document.getElementById('adsOpenAds').checked,
-        });
-        resultEl.textContent = JSON.stringify(res, null, 2);
-      } catch (e) {
-        resultEl.textContent = 'ERROR: ' + e;
-      }
-    });
-
-    async function loadAdsDesigns() {
-      try {
-        const r = await fetch('/ads/design/params');
-        const data = await r.json();
-        const select = document.getElementById('adsDesignName');
-        select.innerHTML = '';
-        (data.designs || []).forEach(d => {
-          const opt = document.createElement('option');
-          opt.value = d.name;
-          opt.textContent = `${d.name} (${d.design}, ${d.frequency_ghz} GHz)`;
-          select.appendChild(opt);
-        });
-      } catch (e) {
-        console.error(e);
-      }
-    }
-
-    loadAdsDesigns();
-
-    document.getElementById('buildCircBtn').addEventListener('click', async () => {
-      const payload = {
-        circuit_type: document.getElementById('adpType').value,
-        design: document.getElementById('adpDesign').value,
-        frequency_ghz: parseFloat(document.getElementById('adpFreq').value) || 2.4,
-        open_in_ads: document.getElementById('adsOpenAds').checked,
-      };
-      resultEl.textContent = 'Building circuit...';
-      try {
-        const res = await post('/ads/build', payload);
         resultEl.textContent = JSON.stringify(res, null, 2);
       } catch (e) {
         resultEl.textContent = 'ERROR: ' + e;

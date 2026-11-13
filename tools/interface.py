@@ -81,84 +81,11 @@ def list_design_params() -> dict:
     return response.json()
 
 
-def build_circuit(
-    circuit_type: str,
-    design: str = "Class AB Audio Power Amplifier",
-    frequency_ghz: float = 2.4,
-    open_in_ads: bool = False,
-) -> dict:
-
-    response = httpx.post(
-        f"{API_BASE_URL}/ads/build",
-        json={
-            "circuit_type": circuit_type,
-            "design": design,
-            "frequency_ghz": frequency_ghz,
-            "open_in_ads": open_in_ads,
-        },
-        timeout=300,
-    )
-    response.raise_for_status()
-
-    return response.json()
-
-
-def create_ads_circuit_params(
-    name: str,
-    circuit_type: str = "active",
-    design: str = "Class AB Audio Power Amplifier",
-    frequency_ghz: float = 2.4,
-    load_ohm: float = 8.0,
-    output_power_w: float = 50.0,
-    supply_v: float = 35.0,
-    closed_loop_gain: float = 101.0,
-) -> dict:
-
-    response = httpx.post(
-        f"{API_BASE_URL}/ads/design/params",
-        json={
-            "name": name,
-            "circuit_type": circuit_type,
-            "design": design,
-            "frequency_ghz": frequency_ghz,
-            "load_ohm": load_ohm,
-            "output_power_w": output_power_w,
-            "supply_v": supply_v,
-            "closed_loop_gain": closed_loop_gain,
-        },
-        timeout=120,
-    )
-    response.raise_for_status()
-
-    return response.json()
-
-
-def list_ads_circuit_params() -> dict:
-    response = httpx.get(f"{API_BASE_URL}/ads/design/params", timeout=60)
-    response.raise_for_status()
-
-    return response.json()
-
-
-def build_ads_circuit_from_design(name: str, open_in_ads: bool = False) -> dict:
-    response = httpx.post(
-        f"{API_BASE_URL}/ads/design/build",
-        json={"name": name, "open_in_ads": open_in_ads},
-        timeout=900,
-    )
-    response.raise_for_status()
-
-    return response.json()
-
-
 def main(argv=None) -> int:
 
     parser = argparse.ArgumentParser(
         prog="circuitgen",
-        description=(
-            "CircuitGen build interface - build an antenna in HFSS "
-            "or a circuit in ADS"
-        ),
+        description="CircuitGen build interface - build an antenna in HFSS",
     )
     subparsers = parser.add_subparsers(
         dest="command",
@@ -206,58 +133,6 @@ def main(argv=None) -> int:
         help="List the saved design parameter sets",
     )
 
-    p_ads_params = subparsers.add_parser(
-        "ads-design-params",
-        help="Set and save ADS circuit design parameters before building",
-    )
-    p_ads_params.add_argument("--name", required=True)
-    p_ads_params.add_argument(
-        "--circuit-type", default="active", choices=["passive", "active"])
-    p_ads_params.add_argument(
-        "--design",
-        default="Class AB Audio Power Amplifier",
-        choices=[
-            "Class AB Audio Power Amplifier",
-            "PA",
-            "LNA",
-            "Impedance Matching Network",
-        ],
-    )
-    p_ads_params.add_argument("--frequency-ghz", type=float, default=2.4)
-    p_ads_params.add_argument("--load-ohm", type=float, default=8.0)
-    p_ads_params.add_argument("--output-power-w", type=float, default=50.0)
-    p_ads_params.add_argument("--supply-v", type=float, default=35.0)
-    p_ads_params.add_argument("--closed-loop-gain", type=float, default=101.0)
-
-    p_ads_list = subparsers.add_parser(
-        "ads-list-designs",
-        help="List the saved ADS circuit design parameter sets",
-    )
-
-    p_ads_build = subparsers.add_parser(
-        "ads-build-circuit",
-        help="Build an ADS circuit from a saved design parameter set",
-    )
-    p_ads_build.add_argument("--design", required=True)
-    p_ads_build.add_argument("--open-ads", action="store_true")
-
-    p_circuit = subparsers.add_parser(
-        "build-circuit",
-        help="Build a circuit in ADS (passive / active)",
-    )
-    p_circuit.add_argument(
-        "--circuit-type",
-        required=True,
-        choices=["passive", "active"],
-    )
-    p_circuit.add_argument("--design", default="Class AB Audio Power Amplifier")
-    p_circuit.add_argument("--frequency-ghz", type=float, default=2.4)
-    p_circuit.add_argument(
-        "--open-ads",
-        action="store_true",
-        help="attach the workspace and create the schematic cell in ADS",
-    )
-
     args = parser.parse_args(argv)
 
     if args.command == "build-antenna":
@@ -291,46 +166,6 @@ def main(argv=None) -> int:
     if args.command == "list-designs":
 
         print(list_design_params())
-        return 0
-
-    if args.command == "ads-design-params":
-
-        result = create_ads_circuit_params(
-            name=args.name,
-            circuit_type=args.circuit_type,
-            design=args.design,
-            frequency_ghz=args.frequency_ghz,
-            load_ohm=args.load_ohm,
-            output_power_w=args.output_power_w,
-            supply_v=args.supply_v,
-            closed_loop_gain=args.closed_loop_gain,
-        )
-        print(result)
-        return 0
-
-    if args.command == "ads-list-designs":
-
-        print(list_ads_circuit_params())
-        return 0
-
-    if args.command == "ads-build-circuit":
-
-        result = build_ads_circuit_from_design(
-            name=args.design,
-            open_in_ads=args.open_ads,
-        )
-        print(result)
-        return 0
-
-    if args.command == "build-circuit":
-
-        result = build_circuit(
-            circuit_type=args.circuit_type,
-            design=args.design,
-            frequency_ghz=args.frequency_ghz,
-            open_in_ads=args.open_ads,
-        )
-        print(result)
         return 0
 
     return 0

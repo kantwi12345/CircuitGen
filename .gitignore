@@ -2,6 +2,10 @@
 tmp_*
 tmp/
 *.tmp
+debug_*
+probe_*
+test_attach_open.py
+test_full_flow*.py
 
 # python
 __pycache__/
