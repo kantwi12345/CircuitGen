@@ -977,7 +977,7 @@ def create_yagi_uda_antenna_prototype(frequency_ghz=2.5):
         )
 
         #
-        # Assign PEC material to each conductor before uniting them.
+        # Assign PEC material to each conductor.
         #
         for _obj in ["Reflector", "DrivenElement", "Director1", "Director2", "Director3", "Boom", "FeedCone"]:
             editor.AssignMaterial(
@@ -993,17 +993,35 @@ def create_yagi_uda_antenna_prototype(frequency_ghz=2.5):
             )
 
         #
-        # Unite all conductor parts so they do not register as
-        # intersecting separate solids during simulation.
         #
-        editor.Unite(
+        # Subtract the boom from each element and from the feed cone so
+        # that the solids no longer intersect (the boom passes through).
+        #
+        for _obj in ["Reflector", "DrivenElement", "Director1", "Director2", "Director3", "FeedCone"]:
+            editor.Subtract(
+                [
+                    "NAME:Selections",
+                    "Blank Parts:=", _obj,
+                    "Tool Parts:=", "Boom"
+                ],
+                [
+                    "NAME:SubtractParameters",
+                    "KeepOriginals:=", False
+                ]
+            )
+
+        #
+        # Subtract the driven element from the feed cone so they do not
+        # intersect.
+        #
+        editor.Subtract(
             [
                 "NAME:Selections",
-                "Selections:=",
-                ["Reflector", "DrivenElement", "Director1", "Director2", "Director3", "Boom", "FeedCone"]
+                "Blank Parts:=", "FeedCone",
+                "Tool Parts:=", "DrivenElement"
             ],
             [
-                "NAME:UniteParameters",
+                "NAME:SubtractParameters",
                 "KeepOriginals:=", False
             ]
         )
