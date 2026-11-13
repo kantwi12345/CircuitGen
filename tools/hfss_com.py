@@ -1000,7 +1000,7 @@ def create_yagi_uda_antenna_prototype(frequency_ghz=2.5):
             [
                 "NAME:Selections",
                 "Selections:=",
-                "Reflector,DrivenElement,Director1,Director2,Director3,Boom,FeedCone"
+                ["Reflector", "DrivenElement", "Director1", "Director2", "Director3", "Boom", "FeedCone"]
             ],
             [
                 "NAME:UniteParameters",
