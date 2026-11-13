@@ -1,125 +1,17 @@
-# ===================================
-# Python
-# ===================================
+# scratch / debug artefacts
+tmp_*
+tmp/
+*.tmp
 
+# python
 __pycache__/
 *.py[cod]
-*$py.class
-
-# Distribution
-build/
-dist/
-downloads/
-eggs/
-.eggs/
-lib/
-lib64/
-parts/
-sdist/
-var/
-wheels/
-*.egg-info/
-.installed.cfg
-*.egg
-
-# ===================================
-# Virtual Environments
-# ===================================
-
 venv/
-.venv/
-env/
-ENV/
 
-# ===================================
-# IDE
-# ===================================
+# local backups
+CircuitGen_Backup.zip
 
-.vscode/
-.idea/
-
-# ===================================
-# Logs
-# ===================================
-
-*.log
-logs/
-
-# ===================================
-# Environment Variables
-# ===================================
-
+# secrets
 .env
 .env.*
 
-# ===================================
-# Jupyter
-# ===================================
-
-.ipynb_checkpoints/
-
-# ===================================
-# Windows
-# ===================================
-
-Thumbs.db
-Desktop.ini
-
-# ===================================
-# HFSS / Ansys Files
-# ===================================
-
-*.lock
-*.aedb/
-*.aedtresults/
-*.hfssresults/
-
-# Temporary Ansys files
-*.cache
-*.err
-*.out
-
-# Autosave
-*.autosave
-
-# ===================================
-# Simulation Outputs
-# ===================================
-
-exports/
-reports/
-results/
-plots/
-s11/
-farfield/
-
-# ===================================
-# Generated Data
-# ===================================
-
-*.csv
-*.dat
-*.tab
-
-# Keep manually created datasets if desired
-# !data/
-
-# ===================================
-# Testing
-# ===================================
-
-.pytest_cache/
-.coverage
-htmlcov/
-
-# ===================================
-# OS Generated
-# ===================================
-
-.DS_Store
-
-# ===================================
-# Git
-# ===================================
-
-*.orig
