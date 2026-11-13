@@ -492,6 +492,7 @@ def create_patch_antenna(
             ],
             "boundaries": [
                 "PerfE1",
+                "PerfE2",
                 "Rad1"
             ],
         }
