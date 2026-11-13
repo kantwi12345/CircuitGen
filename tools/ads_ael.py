@@ -5,18 +5,23 @@ ADS macros are AEL scripts (ADS records them as *.mac / *.dem). The
 design-editor API used here was taken from the ADS AEL sources and from
 a recorded ADS macro (one resistor, placed + value set):
 
-    de_create_new_schematic_view(lib, cell, "schematic");
+    decl macroContext = de_create_new_schematic_view("LNA_lib", "lna", "schematic");
     de_show_context_in_new_window(macroContext);
-    decl itemInfo0SP = de_init_item("ads_rflib:R:symbol");
-    de_place_item(itemInfo0SP, 1, 0.5);
-    itemInfo0SP = de_free_item(itemInfo0SP);
-    de_select_range(1.50625, 0.51875, 1.50625, 0.51875, 1, 1);
-    decl itemInfo0SP = de_edit_item("R1");
-    de_set_item_parameters(itemInfo0SP, list(prm_ex("ads_rflib","StdForm","30 Ohm"), ...));
-    de_end_edit_item(itemInfo0SP);
-    de_end_edit_item(itemInfo0SP);
-    de_end_edit_item(itemInfo0SP);
-    itemInfo0SP = de_free_item(itemInfo0SP);
+    decl macroContext = de_get_design_context_from_name("LNA_lib:lna:schematic");
+    de_show_context_in_new_window(macroContext);
+    de_close_window();
+    decl macroContext = de_get_design_context_from_name("LNA_lib:lna:schematic");
+    de_show_context_in_new_window(macroContext);
+    decl itemInfo1SP = de_init_item("ads_rflib:R:symbol");
+    de_place_item(itemInfo1SP, 0.25, 0.5);
+    itemInfo1SP = de_free_item(itemInfo1SP);
+    de_select_range(0.74375, 0.46875, 0.74375, 0.46875, 1, 1);
+    decl itemInfo1SP = de_edit_item("R1");
+    de_set_item_parameters(itemInfo1SP, list(prm_ex("ads_rflib","StdForm","30 Ohm"), ...));
+    de_end_edit_item(itemInfo1SP);
+    de_end_edit_item(itemInfo1SP);
+    de_end_edit_item(itemInfo1SP);
+    itemInfo1SP = de_free_item(itemInfo1SP);
 """
 
 import os
@@ -96,11 +101,20 @@ def build_macro(
             f"{COMPONENT_TYPES[element.kind][0]}{counters[element.kind]}"
         )
 
+    full_cell = f"{library}:{cell}:schematic"
+
     lines = [
-        f'/* CircuitGen ADS macro - {library}:{cell} */',
-        "",
+        "/* Begin */",
         f'decl macroContext = de_create_new_schematic_view("{library}", '
         f'"{cell}", "schematic");',
+        "de_show_context_in_new_window(macroContext);",
+        f'decl macroContext = de_get_design_context_from_name("{full_cell}");',
+        "// For an artwork macro: decl macroContext = de_get_current_design_context();",
+        "de_show_context_in_new_window(macroContext);",
+        "de_close_window();",
+        "/* Begin */",
+        f'decl macroContext = de_get_design_context_from_name("{full_cell}");',
+        "// For an artwork macro: decl macroContext = de_get_current_design_context();",
         "de_show_context_in_new_window(macroContext);",
         "",
     ]
@@ -172,6 +186,7 @@ def build_macro(
             lines.append("")
 
     lines.append("de_save();")
+    lines.append("/* End */")
     lines.append("")
 
     return "\n".join(lines)
