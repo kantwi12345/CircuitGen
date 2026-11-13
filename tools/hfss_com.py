@@ -884,7 +884,7 @@ def create_yagi_uda_antenna_prototype(frequency_ghz=2.5):
             ],
             [
                 "NAME:SubtractParameters",
-                "KeepOriginals:=", True
+                "KeepOriginals:=", False
             ]
         )
 
@@ -977,6 +977,38 @@ def create_yagi_uda_antenna_prototype(frequency_ghz=2.5):
         )
 
         #
+        # Assign PEC material to each conductor before uniting them.
+        #
+        for _obj in ["Reflector", "DrivenElement", "Director1", "Director2", "Director3", "Boom", "FeedCone"]:
+            editor.AssignMaterial(
+                [
+                    "NAME:Selections",
+                    "Selections:=", _obj
+                ],
+                [
+                    "NAME:Attributes",
+                    "MaterialValue:=", "\"pec\"",
+                    "SolveInside:=", False
+                ]
+            )
+
+        #
+        # Unite all conductor parts so they do not register as
+        # intersecting separate solids during simulation.
+        #
+        editor.Unite(
+            [
+                "NAME:Selections",
+                "Selections:=",
+                "Reflector,DrivenElement,Director1,Director2,Director3,Boom,FeedCone"
+            ],
+            [
+                "NAME:UniteParameters",
+                "KeepOriginals:=", False
+            ]
+        )
+
+        #
         # RADIATION BOUNDARY
         #
 
@@ -993,19 +1025,6 @@ def create_yagi_uda_antenna_prototype(frequency_ghz=2.5):
         )
 
 
-
-        for _obj in ["Reflector", "DrivenElement", "Director1", "Director2", "Director3", "Boom", "FeedCone"]:
-            editor.AssignMaterial(
-                [
-                    "NAME:Selections",
-                    "Selections:=", _obj
-                ],
-                [
-                    "NAME:Attributes",
-                    "MaterialValue:=", "\"pec\"",
-                    "SolveInside:=", False
-                ]
-            )
 
         return {
             "status": "Yagi-Uda prototype geometry created",
