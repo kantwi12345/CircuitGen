@@ -24,7 +24,7 @@ import win32gui
 from pywinauto import Desktop
 from pywinauto.keyboard import send_keys
 
-ADS_HFSS_TITLE = "Ansys Electronics Desktop"
+AEDT_TITLE = "Ansys Electronics Desktop"
 
 
 def _uia():
@@ -45,7 +45,7 @@ def find_hfss_main(desk=None, timeout=30):
         for window in desk.windows():
             try:
                 if window.is_visible() and \
-                        ADS_HFSS_TITLE in window.window_text():
+                        AEDT_TITLE in window.window_text():
                     return window
             except Exception:
                 pass
@@ -54,7 +54,7 @@ def find_hfss_main(desk=None, timeout=30):
         hits = []
 
         def callback(hwnd, _):
-            if ADS_HFSS_TITLE in win32gui.GetWindowText(hwnd):
+            if AEDT_TITLE in win32gui.GetWindowText(hwnd):
                 hits.append(hwnd)
 
         win32gui.EnumWindows(callback, None)

@@ -266,7 +266,7 @@ POST /design/build
 # Updates (HFSS-only focus)
 
 - HFSS generators kept geometry-only (no excitation/setup/sweep automation).
-- All ADS/circuit-related work removed; focus is HFSS antenna automation.
+- Circuit/ADS-related work removed; focus is HFSS antenna automation.
 - Antenna types: patch, monopole, dipole, yagi.
 
 # Current Challenges
