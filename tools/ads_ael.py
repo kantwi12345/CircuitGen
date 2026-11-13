@@ -1,52 +1,42 @@
 """
 CircuitGen - ADS AEL macro generator.
 
-ADS macros are AEL scripts (ADS records them as *.mac / *.dem files).
-The design-editor API used here was taken from the ADS AEL sources:
+ADS macros are AEL scripts (ADS records them as *.mac / *.dem). The
+design-editor API used here was taken from the ADS AEL sources and from
+a recorded ADS macro (one resistor, placed + value set):
 
-    de_create_new_schematic_view(lib, cell, "schematic")
-    de_show_context_in_new_window(macroContext)
-    de_iff_add_component(type, instName, isLeaf, x, y, rot, mirror, mask, propList)
-    place_instance(x, y)
-    db_add_string_parm_to_instance(instance, parmName, value)
-    add_wire(x, y) ... end();
-    set_named_connection(net); named_connection(x, y);
-
-The generated macro is played back inside ADS with
-    Tools > Playback Macro...
+    de_create_new_schematic_view(lib, cell, "schematic");
+    de_show_context_in_new_window(macroContext);
+    decl itemInfo0SP = de_init_item("ads_rflib:R:symbol");
+    de_place_item(itemInfo0SP, 1, 0.5);
+    itemInfo0SP = de_free_item(itemInfo0SP);
+    de_select_range(1.50625, 0.51875, 1.50625, 0.51875, 1, 1);
+    decl itemInfo0SP = de_edit_item("R1");
+    de_set_item_parameters(itemInfo0SP, list(prm_ex("ads_rflib","StdForm","30 Ohm"), ...));
+    de_end_edit_item(itemInfo0SP);
+    de_end_edit_item(itemInfo0SP);
+    de_end_edit_item(itemInfo0SP);
+    itemInfo0SP = de_free_item(itemInfo0SP);
 """
 
-import math
 import os
 
 from tools.netlist_sim import parse_netlist
 
-# ADS palette component names (Lumped-Components / Sources palettes)
 COMPONENT_TYPES = {
-    "R": "Resistor",
-    "C": "Capacitor",
-    "L": "Inductor",
-    "V": "DC Voltage Source",
-    "I": "DC Current Source",
-    "E": "Voltage Controlled Voltage Source",
-    "G": "Voltage Controlled Current Source",
-}
-
-# schematic parameter name per component type
-PARAM_NAMES = {
     "R": "R",
     "C": "C",
     "L": "L",
-    "V": "DC",
-    "I": "DC",
-    "E": "gain",
-    "G": "gain",
+    "V": "V_DC",
+    "I": "I_DC",
+    "E": "VCVS",
+    "G": "VCCS",
 }
 
-GRID_X = 1000
-GRID_Y = 1000
-ORIGIN_X = 2000
-ORIGIN_Y = 2000
+GRID_X = 1.0
+GRID_Y = 0.6
+ORIGIN_X = 1.0
+ORIGIN_Y = 0.5
 
 
 def _format_value(value, kind):
@@ -59,12 +49,18 @@ def _format_value(value, kind):
         return f"{value:g} Ohm"
     if kind == "L":
         if abs(value) >= 1e-6:
-            return f"{value/1e6:g}u H"
-        return f"{value*1e9:g} nH"
+            return f"{value/1e-6:g} uH"
+        if abs(value) >= 1e-9:
+            return f"{value*1e9:g} nH"
+        return f"{value*1e12:g} pH"
     if kind == "C":
         if abs(value) >= 1e-6:
-            return f"{value/1e6:g}u F"
-        return f"{value*1e12:g} pF"
+            return f"{value/1e-6:g} uF"
+        if abs(value) >= 1e-9:
+            return f"{value*1e9:g} nF"
+        if abs(value) >= 1e-12:
+            return f"{value*1e12:g} pF"
+        return f"{value*1e15:g} fF"
     return f"{value:g}"
 
 
@@ -74,9 +70,31 @@ def build_macro(
     netlist_text: str,
     include_wires: bool = True,
 ) -> str:
-    """Build an AEL macro that recreates the netlist as an ADS schematic."""
 
     elements = parse_netlist(netlist_text)
+
+    positions = {}
+    column = 0
+    row = 0
+    for element in elements:
+        if element.kind not in COMPONENT_TYPES:
+            continue
+        positions[element.name] = (column * GRID_X, row * GRID_Y)
+        column += 1
+        if column >= 4:
+            column = 0
+            row += 1
+
+    # auto-assigned instance names: R1, R2, C1, C2, ...
+    counters = {}
+    instance_names = {}
+    for element in elements:
+        if element.kind not in COMPONENT_TYPES:
+            continue
+        counters[element.kind] = counters.get(element.kind, 0) + 1
+        instance_names[element.name] = (
+            f"{COMPONENT_TYPES[element.kind][0]}{counters[element.kind]}"
+        )
 
     lines = [
         f'/* CircuitGen ADS macro - {library}:{cell} */',
@@ -87,62 +105,71 @@ def build_macro(
         "",
     ]
 
-    # ---- place the components on a grid -------------------------------
-    positions = {}
-    column = 0
-    row = 0
-
+    # ---- place + value-set each component ---------------------------
     for element in elements:
         kind = element.kind
         if kind not in COMPONENT_TYPES:
             continue
 
-        x = ORIGIN_X + column * GRID_X
-        y = ORIGIN_Y - row * GRID_Y
-        positions[element.name] = (x, y)
+        x = ORIGIN_X + positions[element.name][0]
+        y = ORIGIN_Y + positions[element.name][1]
+        cx = x + 0.5
+        cy = y + 0.02
+        symbol = f"ads_rflib:{COMPONENT_TYPES[kind]}:symbol"
 
         if kind in ("R", "C", "L"):
             value = _format_value(element.params.get("value"), kind)
-            prop = f'"{PARAM_NAMES[kind]}={value}"'
         elif kind in ("V", "I"):
-            dc = element.params.get("dc", 0.0)
-            ac = element.params.get("ac", 0.0)
-            prop = f'"DC={dc} Volt"'
+            value = f"DC={element.params.get('dc', 0.0)} Volt"
         else:
-            prop = f'"gain={element.params.get("gain", 0)}"'
+            value = f"gain={element.params.get('gain', 0)}"
 
+        inst = instance_names[element.name]
+
+        lines.append(f'decl itemInfo0SP = de_init_item("{symbol}");')
+        lines.append(f"de_place_item(itemInfo0SP, {x:g}, {y:g});")
+        lines.append("itemInfo0SP = de_free_item(itemInfo0SP);")
+        lines.append(f"de_select_range({cx:g}, {cy:g}, {cx:g}, {cy:g}, 1, 1);")
+        lines.append(f'decl itemInfo0SP = de_edit_item("{inst}");')
         lines.append(
-            f'de_iff_add_component("{COMPONENT_TYPES[kind]}", '
-            f'"{element.name}", TRUE, {x}, {y}, 0, MIRROR_NONE, 0, list({prop}));'
+            f'de_set_item_parameters(itemInfo0SP, '
+            f'list(prm_ex("ads_rflib","StdForm","{value}")));'
         )
+        lines.append("de_end_edit_item(itemInfo0SP);")
+        lines.append("de_end_edit_item(itemInfo0SP);")
+        lines.append("de_end_edit_item(itemInfo0SP);")
+        lines.append("itemInfo0SP = de_free_item(itemInfo0SP);")
+        lines.append("")
 
-        column += 1
-        if column >= 4:
-            column = 0
-            row += 1
-
-    lines.append("")
-
-    # ---- connect the parts with wires --------------------------------
+    # ---- connect the parts with wires (best effort) -----------------
     if include_wires:
+        lines.append("/* --- connections --- */")
         nets = {}
         for element in elements:
             if element.kind in ("R", "C", "L", "V", "I"):
                 for index, node in enumerate(element.nodes):
                     nets.setdefault(node, []).append((element.name, index))
 
-        lines.append("* --- connections ---")
         for node, members in nets.items():
             if node == "0" or len(members) < 2:
                 continue
-            for i in range(len(members) - 1):
-                (name_a, pin_a), (name_b, pin_b) = members[i], members[i + 1]
-                x1, y1 = positions.get(name_a, (ORIGIN_X, ORIGIN_Y))
-                x2, y2 = positions.get(name_b, (ORIGIN_X, ORIGIN_Y))
-                lines.append(f'set_named_connection("{node}");')
-                lines.append(f"named_connection({x1}, {y1});")
-                lines.append(f"named_connection({x2}, {y2});")
-        lines.append("")
+            lines.append(f'set_named_connection("{node}");')
+            for name, _ in members:
+                x, y = positions.get(name, (0, 0))
+                cx = ORIGIN_X + x + 0.5
+                cy = ORIGIN_Y + y + 0.02
+                lines.append(f"named_connection({cx:g}, {cy:g});")
+            lines.append("ifftolib_set_layer(4, 1);")
+            first_name, _ = members[0]
+            fx, fy = positions.get(first_name, (0, 0))
+            lines.append(f"add_wire({ORIGIN_X + fx + 0.5:g}, "
+                        f"{ORIGIN_Y + fy + 0.02:g});")
+            for name, _ in members[1:]:
+                x, y = positions.get(name, (0, 0))
+                lines.append(f"add_wire({ORIGIN_X + x + 0.5:g}, "
+                            f"{ORIGIN_Y + y + 0.02:g});")
+            lines.append("end();")
+            lines.append("")
 
     lines.append("de_save();")
     lines.append("")
@@ -150,20 +177,13 @@ def build_macro(
     return "\n".join(lines)
 
 
-def write_macro(
-    path: str,
-    library: str,
-    cell: str,
-    netlist_text: str,
-    include_wires: bool = True,
-) -> str:
+def write_macro(path, library, cell, netlist_text, include_wires=True):
     macro = build_macro(library, cell, netlist_text, include_wires)
 
     os.makedirs(os.path.dirname(path), exist_ok=True)
     with open(path, "w", encoding="utf-8") as fh:
         fh.write(macro)
 
-    # ADS appends .dem to macro names when recording - write both
     dem_path = path + ".dem"
     with open(dem_path, "w", encoding="utf-8") as fh:
         fh.write(macro)

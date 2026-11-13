@@ -432,21 +432,41 @@ def play_macro(macro_path, timeout=240, win=None, desk=None):
     _click_menu(win, ("Tools", "Playback Macro..."))
     time.sleep(3)
 
-    name_edit = None
-    for window in desk.windows():
+    # the Playback dialog uses the File View browser panel
+    for tab in win.descendants(control_type="TabItem"):
         try:
-            if not window.is_visible() or window.process_id() != win.process_id():
-                continue
-            for ctl in window.descendants(control_type="Edit"):
-                try:
-                    info = ctl.element_info
-                    if info.class_name == "Edit" and \
-                            (info.name or "").lower().startswith("file name"):
-                        name_edit = ctl
-                except Exception:
-                    pass
+            if (tab.element_info.name or "") == "File View":
+                tab.click_input()
+                time.sleep(1.5)
+                break
         except Exception:
             pass
+
+    name_edit = None
+    open_button = None
+    for _ in range(10):
+        for window in desk.windows():
+            try:
+                if not window.is_visible() or window.process_id() != win.process_id():
+                    continue
+                for ctl in window.descendants(control_type="Edit"):
+                    try:
+                        info = ctl.element_info
+                        if info.class_name == "Edit" and                                 (info.name or "").lower().startswith("file name"):
+                            name_edit = ctl
+                    except Exception:
+                        pass
+                for ctl in window.descendants(control_type="Button"):
+                    try:
+                        if (ctl.element_info.name or "").lower().startswith("open"):
+                            open_button = ctl
+                    except Exception:
+                        pass
+            except Exception:
+                pass
+        if name_edit is not None:
+            break
+        time.sleep(1)
 
     if name_edit is None:
         return {"status": "macro_file_dialog_not_found"}
@@ -456,13 +476,13 @@ def play_macro(macro_path, timeout=240, win=None, desk=None):
     send_keys("^a{DELETE}")
     name_edit.type_keys(macro_path, with_spaces=True)
     time.sleep(0.5)
-    send_keys("{ENTER}")
 
-    # give ADS time to run the macro
-    deadline = time.time() + timeout
-    while time.time() < deadline:
-        time.sleep(5)
-        break
+    if open_button is not None:
+        open_button.click_input()
+    else:
+        send_keys("{ENTER}")
+
+    time.sleep(10)
 
     return {
         "status": "macro_played",
@@ -492,17 +512,3 @@ def attach(workspace_dir, cell_name=None, library_name=None):
             result = create_schematic(workspace_dir, cell_name, win=win)
 
     return result
-
-
-if __name__ == "__main__":
-    import argparse
-
-    parser = argparse.ArgumentParser(
-        description="Attach a CircuitGen ADS workspace in ADS 2023")
-    parser.add_argument("--workspace", required=True,
-                        help="workspace directory, e.g. C:\\ADS_Projects\\LNA_wrk")
-    parser.add_argument("--cell", default=None,
-                        help="schematic cell name to create (no spaces)")
-
-    args = parser.parse_args()
-    print(attach(args.workspace, args.cell))
