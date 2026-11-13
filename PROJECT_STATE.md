@@ -210,6 +210,37 @@ save, then "2. Build Antenna in HFSS" (inline or from a saved set).
 
 Saved sets live in `projects/designs/*.json`.
 
+### HFSS design variables (Local Variables)
+
+`tools/hfss_vars.py` writes the design parameters into the HFSS design as
+**local variables** - they show up exactly where you pointed:
+
+```
+Properties: <project> - <design>  ->  Local Variables tab
+```
+
+| Antenna | Variables written |
+|---|---|
+| Patch | 20: f0, er, h, patch_w/l/x/y, feed_w/l/x, board_x/y, gnd_ext, port_x, air_x/y/z, air_sx/sy/sz |
+| Monopole | 13: f0, rad_l/r/z, gnd_half, port_x/w, air_* |
+| Dipole | 12: f0, dip_l/r, gap_l/r, port_x, air_* |
+
+Notes:
+
+- HFSS has no working COM call for this (`SetVariableValue` and
+  `ChangeProperty` on `LocalVariableTab` are both rejected), so the
+  Properties dialog is driven through the GUI (right-click the design ->
+  "Design Properties..." -> Add... -> Add Property).
+- The **Name** field takes the bare name (`f0`, not `$f0`) - HFSS adds
+  the `$` itself and rejects a typed `$` with
+  "must begin with a letter or an underscore".
+- The GUI automation can take the calling process down with an access
+  violation, so it runs in an **isolated child process**
+  (`set_design_variables_isolated`).
+- HFSS 2022 R1 **crashes** when a geometry field is driven by a variable
+  expression (`$feed_l`), so the geometry is created with literal values
+  and the variables are attached to the finished design.
+
 ### Parametric geometry (frequency-driven)
 
 All HFSS generators are now driven by the operating frequency instead of

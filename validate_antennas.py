@@ -89,7 +89,8 @@ def check_close(label, actual, expected, tolerance=0.05, failures=None):
 
 def validate_patch(freq):
     layout = patch_layout(freq, er=4.4, h_mm=1.6)
-    create_patch_antenna(frequency_ghz=freq, er=4.4, thickness_mm=1.6)
+    create_patch_antenna(frequency_ghz=freq, er=4.4, thickness_mm=1.6,
+                         use_variables=False)
 
     editor = last_design("PatchAntenna").SetActiveEditor("3D Modeler")
     failures = list(layout["checks"])
@@ -166,7 +167,7 @@ def validate_patch(freq):
 
 def validate_monopole(freq):
     layout = monopole_layout(freq)
-    create_monopole_antenna(frequency_ghz=freq)
+    create_monopole_antenna(frequency_ghz=freq, use_variables=False)
 
     editor = last_design("MonopoleAntenna").SetActiveEditor("3D Modeler")
     failures = list(layout["checks"])
@@ -218,7 +219,7 @@ def validate_monopole(freq):
 
 def validate_dipole(freq):
     layout = dipole_layout(freq)
-    create_dipole_antenna(frequency_ghz=freq)
+    create_dipole_antenna(frequency_ghz=freq, use_variables=False)
 
     editor = last_design("DipoleAntenna").SetActiveEditor("3D Modeler")
     failures = list(layout["checks"])

@@ -274,7 +274,7 @@ def create_patch_antenna(
     )
 
 
-def create_monopole_antenna(frequency_ghz=2.4):
+def create_monopole_antenna(frequency_ghz=2.4, use_variables=True):
 
     """
     Quarter-wave monopole.
@@ -455,6 +455,37 @@ def create_monopole_antenna(frequency_ghz=2.4):
             ]
         )
 
+        #
+        # Design variables - appear in
+        # Properties -> MonopoleAntenna -> Local Variables
+        #
+        variables = {
+            "f0": f"{frequency_ghz}GHz",
+            "rad_l": f"{monopole_length}mm",
+            "rad_r": f"{monopole_radius}mm",
+            "rad_z": "1mm",
+            "gnd_half": f"{ground_half}mm",
+            "port_x": f"-{monopole_radius}mm",
+            "port_w": f"{2 * monopole_radius}mm",
+            "air_x": f"{layout['air_x_mm']}mm",
+            "air_y": f"{layout['air_y_mm']}mm",
+            "air_z": f"{layout['air_z_mm']}mm",
+            "air_sx": f"{layout['air_size_xy_mm']}mm",
+            "air_sy": f"{layout['air_size_xy_mm']}mm",
+            "air_sz": f"{layout['air_size_z_mm']}mm",
+        }
+
+        variable_result = {"status": "skipped"}
+        if use_variables:
+            try:
+                from tools.hfss_vars import set_design_variables_isolated
+
+                variable_result = set_design_variables_isolated(
+                    variables, design_name="MonopoleAntenna"
+                )
+            except Exception as exc:
+                variable_result = {"status": "failed", "error": str(exc)}
+
         return {
             "status": "Monopole geometry created",
             "frequency_ghz": frequency_ghz,
@@ -462,6 +493,8 @@ def create_monopole_antenna(frequency_ghz=2.4):
             "monopole_radius_mm": monopole_radius,
             "ground_half_mm": ground_half,
             "lambda0_mm": layout["lambda0_mm"],
+            "variables": variables,
+            "variables_result": variable_result,
             "objects": [
                 "GroundPlane",
                 "Monopole",
@@ -478,7 +511,7 @@ def create_monopole_antenna(frequency_ghz=2.4):
         pythoncom.CoUninitialize()
 
 
-def create_dipole_antenna(frequency_ghz=2.4):
+def create_dipole_antenna(frequency_ghz=2.4, use_variables=True):
 
     """
     Half-wave dipole with a feed gap.
@@ -651,6 +684,36 @@ def create_dipole_antenna(frequency_ghz=2.4):
             ]
         )
 
+        #
+        # Design variables - appear in
+        # Properties -> DipoleAntenna -> Local Variables
+        #
+        variables = {
+            "f0": f"{frequency_ghz}GHz",
+            "dip_l": f"{dipole_length}mm",
+            "dip_r": f"{dipole_radius}mm",
+            "gap_l": f"{gap_length}mm",
+            "gap_r": f"{gap_radius}mm",
+            "port_x": f"-{gap_radius}mm",
+            "air_x": f"{layout['air_x_mm']}mm",
+            "air_y": f"{layout['air_y_mm']}mm",
+            "air_z": f"{layout['air_z_mm']}mm",
+            "air_sx": f"{layout['air_size_xy_mm']}mm",
+            "air_sy": f"{layout['air_size_xy_mm']}mm",
+            "air_sz": f"{layout['air_size_z_mm']}mm",
+        }
+
+        variable_result = {"status": "skipped"}
+        if use_variables:
+            try:
+                from tools.hfss_vars import set_design_variables_isolated
+
+                variable_result = set_design_variables_isolated(
+                    variables, design_name="DipoleAntenna"
+                )
+            except Exception as exc:
+                variable_result = {"status": "failed", "error": str(exc)}
+
         return {
             "status": "Dipole geometry created",
             "frequency_ghz": frequency_ghz,
@@ -659,6 +722,8 @@ def create_dipole_antenna(frequency_ghz=2.4):
             "gap_length_mm": gap_length,
             "gap_radius_mm": gap_radius,
             "lambda0_mm": layout["lambda0_mm"],
+            "variables": variables,
+            "variables_result": variable_result,
             "objects": [
                 "Dipole",
                 "Gap",
