@@ -173,6 +173,43 @@ optimisation against the solver).
 
 ---
 
+## ADS Circuit Design Parameters (set before building)
+
+`tools/ads_design.py` - the ADS mirror of the HFSS design-parameter stage.
+
+Set: name, circuit type (active/passive), design, frequency, output power,
+load, supply rails, closed-loop gain.
+
+Derived: V_rms, V_peak, I_peak, I_rms, supply headroom, required input
+level, plus the per-design values (LNA match network + simulated
+performance, matching-network L/C, PA swing).
+
+Designs: `Class AB Audio Power Amplifier`, `PA`, `LNA`,
+`Impedance Matching Network`.
+
+Endpoints:
+
+- `POST /ads/design/params` - set + derive + validate + save
+- `GET  /ads/design/params` - list saved sets
+- `GET  /ads/design/params/{name}` - load one set
+- `POST /ads/design/build` - build workspace + library + netlist + build
+  sheet + AEL macro + design report (optionally attach in ADS)
+
+CLI:
+
+```
+python tools/interface.py ads-design-params --name pa_50w_8ohm --design "Class AB Audio Power Amplifier"
+python tools/interface.py ads-list-designs
+python tools/interface.py ads-build-circuit --design pa_50w_8ohm --open-ads
+```
+
+Web UI: panel "3. Build Circuit in ADS" - set the parameters, save, then
+build the saved design (with an option to attach it in ADS).
+
+Saved sets live in `projects/designs/ads_*.json`.
+
+---
+
 ## Antenna Generators
 
 ### Design parameters (set before building)

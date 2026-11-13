@@ -15,6 +15,13 @@ from tools.design_params import (
     build_from_params,
     update_params,
 )
+from tools.ads_design import (
+    make_circuit_params as make_ads_circuit_params,
+    save_design as save_ads_design,
+    load_design as load_ads_design,
+    list_designs as list_ads_designs,
+    build_circuit as build_ads_circuit,
+)
 from tools.hfss_com import (
     create_project,
     create_patch_antenna,
@@ -90,6 +97,23 @@ class DesignParamsRequest(BaseModel):
 
 class BuildFromDesignRequest(BaseModel):
     name: str
+
+
+class ADSCircuitParamsRequest(BaseModel):
+    name: str
+    circuit_type: str = "active"
+    design: str = "Class AB Audio Power Amplifier"
+    frequency_ghz: float = 2.4
+    load_ohm: float = 8.0
+    output_power_w: float = 50.0
+    supply_v: float = 35.0
+    closed_loop_gain: float = 101.0
+    save: bool = True
+
+
+class ADSBuildFromDesignRequest(BaseModel):
+    name: str
+    open_in_ads: bool = False
 
 
 @app.get("/")
@@ -173,6 +197,72 @@ def build_from_design(req: BuildFromDesignRequest):
 
     try:
         result = build_from_params(params)
+    except ValueError as exc:
+        return {"error": str(exc)}
+
+    return {
+        "design": params["name"],
+        "result": result,
+    }
+
+
+# --------------------------------------------------------------------------
+# ADS circuit design parameters - set the design before anything is built
+# --------------------------------------------------------------------------
+
+@app.post("/ads/design/params")
+def create_ads_circuit_params(req: ADSCircuitParamsRequest):
+
+    try:
+        params = make_ads_circuit_params(
+            name=req.name,
+            circuit_type=req.circuit_type,
+            design=req.design,
+            frequency_ghz=req.frequency_ghz,
+            load_ohm=req.load_ohm,
+            output_power_w=req.output_power_w,
+            supply_v=req.supply_v,
+            closed_loop_gain=req.closed_loop_gain,
+        )
+    except ValueError as exc:
+        return {"error": str(exc)}
+
+    saved = None
+    if req.save:
+        saved = save_ads_design(params)
+
+    return {
+        "status": "ADS design parameters ready",
+        "saved_to": saved,
+        "parameters": params,
+    }
+
+
+@app.get("/ads/design/params")
+def get_ads_circuit_params():
+    return {
+        "designs": list_ads_designs(),
+    }
+
+
+@app.get("/ads/design/params/{name}")
+def get_ads_circuit_param(name: str):
+    try:
+        return load_ads_design(name)
+    except FileNotFoundError as exc:
+        return {"error": str(exc)}
+
+
+@app.post("/ads/design/build")
+def build_ads_from_design(req: ADSBuildFromDesignRequest):
+
+    try:
+        params = load_ads_design(req.name)
+    except FileNotFoundError as exc:
+        return {"error": str(exc)}
+
+    try:
+        result = build_ads_circuit(params, open_in_ads=req.open_in_ads)
     except ValueError as exc:
         return {"error": str(exc)}
 

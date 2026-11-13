@@ -1,0 +1,21 @@
+{
+  "tool": "ads",
+  "name": "pa_50w_8ohm",
+  "circuit_type": "active",
+  "design": "Class AB Audio Power Amplifier",
+  "frequency_ghz": 2.4,
+  "load_ohm": 8.0,
+  "output_power_w": 50.0,
+  "supply_v": 35.0,
+  "closed_loop_gain": 101.0,
+  "derived": {
+    "v_rms": 20.0,
+    "v_peak": 28.284,
+    "i_peak": 3.536,
+    "i_rms": 2.5,
+    "v_in_rms": 0.198,
+    "supply_v": 35.0,
+    "supply_headroom_v": 6.716
+  },
+  "checks": []
+}

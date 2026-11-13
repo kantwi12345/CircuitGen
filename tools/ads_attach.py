@@ -33,6 +33,12 @@ def _ads_windows(desk=None):
     return found
 
 
+def _uia():
+    """UIA desktop helper."""
+
+    return Desktop(backend="uia")
+
+
 def _ads_window(desk=None, timeout=60):
     """Return the ADS main window, launching ADS if needed."""
 
@@ -189,25 +195,48 @@ def open_workspace(workspace_dir, timeout=120, desk=None):
     if win is None:
         return {"status": "ads_not_running"}, None
 
-    _click_menu(win, ("File", "Open", "Workspace..."))
-    time.sleep(2.5)
-
     folder_edit = None
     select_button = None
-    for ctl in win.descendants():
+
+    for attempt in range(3):
         try:
-            info = ctl.element_info
-            if info.control_type == "Edit" and info.class_name in ("Edit", "QLineEdit"):
-                if folder_edit is None or (info.name or "").lower().startswith("folder"):
-                    folder_edit = ctl
-            if info.control_type == "Button" and \
-                    (info.name or "").lower().startswith("select folder"):
-                select_button = ctl
+            win.set_focus()
+            # the workspace browser lives in the File View tab
+            for tab in win.descendants(control_type="TabItem"):
+                if (tab.element_info.name or "") == "File View":
+                    tab.click_input()
+                    time.sleep(1.0)
+                    break
+            time.sleep(0.5)
         except Exception:
             pass
 
-    if folder_edit is None:
+        _click_menu(win, ("File", "Open", "Workspace..."))
+        time.sleep(2.5)
+
+        folder_edit = None
+        select_button = None
+        for ctl in win.descendants():
+            try:
+                info = ctl.element_info
+                if info.control_type == "Edit" and \
+                        info.class_name in ("Edit", "QLineEdit"):
+                    if folder_edit is None or \
+                            (info.name or "").lower().startswith("folder"):
+                        folder_edit = ctl
+                if info.control_type == "Button" and \
+                        (info.name or "").lower().startswith("select folder"):
+                    select_button = ctl
+            except Exception:
+                pass
+
+        if folder_edit is not None:
+            break
+
         send_keys("{ESC}")
+        time.sleep(1.5)
+
+    if folder_edit is None:
         return {"status": "folder_field_not_found"}, win
 
     folder_edit.set_focus()
@@ -248,6 +277,85 @@ def open_workspace(workspace_dir, timeout=120, desk=None):
         "workspace": workspace_dir,
         "cell": None,
     }, win
+
+
+def cell_exists(workspace_dir, library_name, cell_name) -> bool:
+    """True when the cell is already present in the workspace library."""
+
+    path = os.path.join(
+        workspace_dir, library_name, cell_name, "schematic", "sch.oa")
+    return os.path.exists(path)
+
+
+def _dismiss_dialogs():
+    """Close any leftover modal (New Schematic / Confirm / Error)."""
+
+    for window in _uia().windows():
+        try:
+            if not window.is_visible():
+                continue
+            title = window.window_text()
+            if title in ("New Schematic", "Confirm New Schematic",
+                         "New Design Error"):
+                for control in window.descendants(control_type="Button"):
+                    name = (control.element_info.name or "").strip()
+                    if name in ("OK", "Cancel", "No", "Close"):
+                        control.click_input()
+                        time.sleep(1.0)
+                        break
+        except Exception:
+            pass
+
+
+def _library_cell_item(win, cell_name):
+    """Find a cell in the ADS Library View tree."""
+
+    for tab in win.descendants(control_type="TabItem"):
+        try:
+            if (tab.element_info.name or "") == "Library View":
+                tab.click_input()
+                time.sleep(1.5)
+                break
+        except Exception:
+            pass
+
+    for item in win.descendants(control_type="TreeItem"):
+        try:
+            name = (item.window_text() or "").strip()
+            if name == cell_name or name.startswith(f"{cell_name} "):
+                return item
+        except Exception:
+            pass
+
+    return None
+
+
+def open_cell(win, cell_name, timeout=40):
+    """Open an existing cell from the library (no creation prompt)."""
+
+    item = _library_cell_item(win, cell_name)
+    if item is None:
+        return {"status": "cell_not_found"}
+
+    try:
+        item.double_click_input()
+    except Exception:
+        return {"status": "cell_open_failed"}
+
+    deadline = time.time() + timeout
+    while time.time() < deadline:
+        time.sleep(2)
+        for window in _uia().windows():
+            try:
+                if window.is_visible() and cell_name in window.window_text():
+                    return {
+                        "status": "cell_opened",
+                        "title": window.window_text(),
+                    }
+            except Exception:
+                pass
+
+    return {"status": "cell_open_timeout"}
 
 
 def create_schematic(workspace_dir, cell_name, timeout=90, win=None, desk=None):
@@ -362,14 +470,26 @@ def play_macro(macro_path, timeout=240, win=None, desk=None):
     }
 
 
-def attach(workspace_dir, cell_name=None):
-    """Open the workspace in ADS and optionally create the schematic cell."""
+def attach(workspace_dir, cell_name=None, library_name=None):
+    """Open the workspace in ADS and optionally open/create the schematic cell."""
 
     result, win = open_workspace(workspace_dir)
 
     if cell_name and win is not None and result.get("status") in (
             "workspace_opened", "workspace_open_unverified"):
-        result = create_schematic(workspace_dir, cell_name, win=win)
+        _dismiss_dialogs()
+
+        # an existing cell cannot be overwritten - open it instead
+        if library_name and cell_exists(workspace_dir, library_name, cell_name):
+            opened = open_cell(win, cell_name)
+            result = {
+                "status": opened.get("status", "cell_exists"),
+                "workspace": workspace_dir,
+                "cell": cell_name,
+                "note": "cell already exists - opened instead of recreated",
+            }
+        else:
+            result = create_schematic(workspace_dir, cell_name, win=win)
 
     return result
 
