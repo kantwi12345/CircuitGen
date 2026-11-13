@@ -498,25 +498,31 @@ Planned:
 - Log-Periodic
 - Spiral
 
----
-
-# Repository Status
-
 Current Milestone:
 
-v0.3.0
+v0.4.0
 
 Major Features Completed:
 
 - HFSS COM Integration
 - FastAPI Backend
-- Patch Generator
-- Monopole Generator
-- Dipole Generator
+- Patch Generator (parametric, frequency-driven)
+- Monopole Generator (parametric, frequency-driven)
+- Dipole Generator (parametric, frequency-driven)
 - Yagi Prototype Generator
 - ADS Launch / Build Command Layer
-- FastAPI `/ads/build` + `/hfss/build` Commands
-- Class AB Audio Power Amplifier Design
+- FastAPI /ads/build + /hfss/build Commands
+- Design Parameters (HFSS + ADS) - set, derive, validate, save, build
+- HFSS Local Variables (Design Properties -> Local Variables)
+- AC Netlist Simulator (MNA, validated)
+- LNA Synthesis + Optimization + Simulation (16.11 dB, -20.20 dB, 82.3 MHz, 1.34 dB)
+- Impedance Matching Network (50 ohm -> 36.5 ohm, |S11| -52.6 dB)
+- Schematic Diagrams (Class AB PA, LNA, Impedance Matching Network)
+- Web Build Interface + CLI + REST API
+- ADS Workspace Generation (real ADS 2023 format)
+- ADS GUI Automation (workspace attach + schematic cell creation)
+- ADS AEL Macro Generation + Playback
+- Comprehensive README documentation
 
 ---
 
