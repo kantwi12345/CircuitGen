@@ -423,6 +423,20 @@ def create_patch_antenna(
             ]
         )
 
+        # The feed line and patch are conductors too. Without a conductor
+        # boundary on them HFSS does not recognise them as a conductor
+        # touching the lumped port, which triggers
+        # "Lumped Port Warning: only 1 conductor touches the port".
+        boundary_module.AssignPerfectE(
+            [
+                "NAME:PerfE2",
+                "Objects:=",
+                ["Patch", "FeedLine"],
+                "InfGroundPlane:=",
+                False
+            ]
+        )
+
         boundary_module.AssignRadiation(
             [
                 "NAME:Rad1",
