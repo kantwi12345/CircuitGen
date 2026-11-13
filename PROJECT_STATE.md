@@ -175,6 +175,41 @@ optimisation against the solver).
 
 ## Antenna Generators
 
+### Design parameters (set before building)
+
+`tools/design_params.py` - the design is specified, derived, validated and
+saved **before** any HFSS model is built.
+
+Set: name, antenna type, frequency, substrate (+ er / loss tangent /
+thickness), feed type, and optional manual overrides (patch W/L, radiator
+radius).
+
+Derived: patch size, 50 ohm feed width (Hammerstad), feed length, board
+size, radiation box, lambda0.
+
+Endpoints:
+
+- `POST /design/params` - set + derive + validate + save a parameter set
+- `GET  /design/params` - list saved sets
+- `GET  /design/params/{name}` - load one set
+- `POST /design/build` - build the HFSS model from a saved set
+- `POST /hfss/build` - accepts a saved `design` name, or derives a parameter
+  set from the request and builds from it (the parameter set comes back with
+  the result)
+
+CLI:
+
+```
+python tools/interface.py design-params --name patch_2p4ghz_fr4 --frequency-ghz 2.4 --substrate FR4
+python tools/interface.py list-designs
+python tools/interface.py build-antenna --design patch_2p4ghz_fr4
+```
+
+Web UI: panel "1. Design Parameters (set before building)" -> derive and
+save, then "2. Build Antenna in HFSS" (inline or from a saved set).
+
+Saved sets live in `projects/designs/*.json`.
+
 ### Parametric geometry (frequency-driven)
 
 All HFSS generators are now driven by the operating frequency instead of

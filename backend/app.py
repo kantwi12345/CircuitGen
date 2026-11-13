@@ -7,12 +7,21 @@ from backend.claude_client import ask_claude
 from tools.ads import ads_status, launch_ads, build_ads_circuit
 from tools.antenna_library import SUBSTRATES
 from tools.antenna_calcs import patch_dimensions, patch_layout
+from tools.design_params import (
+    make_design_params,
+    save_design,
+    load_design,
+    list_designs,
+    build_from_params,
+    update_params,
+)
 from tools.hfss_com import (
     create_project,
     create_patch_antenna,
     create_monopole_antenna,
     create_dipole_antenna,
-    create_yagi_uda_antenna_prototype
+    create_yagi_uda_antenna_prototype,
+    simulate_antenna,
 )
 app = FastAPI()
 
@@ -43,6 +52,20 @@ class AntennaRequest(BaseModel):
     frequency_ghz: float = 2.4
     substrate: str = "FR4"
     thickness_mm: float = 1.6
+    design: str = None          # optional: name of a saved design set
+
+
+class AntennaSimulateRequest(BaseModel):
+    antenna_type: str = "monopole"
+    frequency_ghz: float = 2.4
+    substrate: str = "FR4"
+    thickness_mm: float = 1.6
+    span_ghz: float = 0.5
+    sweep_count: int = 101
+    port_count: int = 1
+    solve: bool = True
+    results_dir: str = None
+    project_path: str = None
 
 
 class ADSBuildRequest(BaseModel):
@@ -50,6 +73,23 @@ class ADSBuildRequest(BaseModel):
     design: str = "Class AB Audio Power Amplifier"
     frequency_ghz: float = 2.4
     open_in_ads: bool = False
+
+
+class DesignParamsRequest(BaseModel):
+    name: str
+    antenna_type: str = "patch"
+    frequency_ghz: float = 2.4
+    substrate: str = "FR4"
+    thickness_mm: float = None
+    feed_type: str = "edge_inset"
+    patch_width_mm: float = None
+    patch_length_mm: float = None
+    radiator_radius_mm: float = None
+    save: bool = True
+
+
+class BuildFromDesignRequest(BaseModel):
+    name: str
 
 
 @app.get("/")
@@ -75,6 +115,70 @@ def tools():
             "spice",
             "kicad"
         ]
+    }
+
+
+# --------------------------------------------------------------------------
+# Design parameters - set the design before anything is built
+# --------------------------------------------------------------------------
+
+@app.post("/design/params")
+def create_design_params(req: DesignParamsRequest):
+
+    params = make_design_params(
+        name=req.name,
+        antenna_type=req.antenna_type,
+        frequency_ghz=req.frequency_ghz,
+        substrate=req.substrate,
+        thickness_mm=req.thickness_mm,
+        feed_type=req.feed_type,
+        patch_width_mm=req.patch_width_mm,
+        patch_length_mm=req.patch_length_mm,
+        radiator_radius_mm=req.radiator_radius_mm,
+    )
+
+    saved = None
+    if req.save:
+        saved = save_design(params)
+
+    return {
+        "status": "design parameters ready",
+        "saved_to": saved,
+        "parameters": params,
+    }
+
+
+@app.get("/design/params")
+def get_design_params():
+    return {
+        "designs": list_designs(),
+    }
+
+
+@app.get("/design/params/{name}")
+def get_design_param(name: str):
+    try:
+        return load_design(name)
+    except FileNotFoundError as exc:
+        return {"error": str(exc)}
+
+
+@app.post("/design/build")
+def build_from_design(req: BuildFromDesignRequest):
+
+    try:
+        params = load_design(req.name)
+    except FileNotFoundError as exc:
+        return {"error": str(exc)}
+
+    try:
+        result = build_from_params(params)
+    except ValueError as exc:
+        return {"error": str(exc)}
+
+    return {
+        "design": params["name"],
+        "result": result,
     }
 
 
@@ -188,41 +292,78 @@ def build_antenna(req: AntennaRequest):
 
     antenna_type = req.antenna_type.lower()
 
+    # build from a saved design parameter set when one is named
+    if req.design:
+        try:
+            params = load_design(req.design)
+        except FileNotFoundError as exc:
+            return {"error": str(exc)}
+
+        try:
+            return build_from_params(params)
+        except ValueError as exc:
+            return {"error": str(exc)}
+
+    # otherwise derive a parameter set from the request and build from it
+    params = make_design_params(
+        name=f"{antenna_type}_{req.frequency_ghz}GHz",
+        antenna_type=antenna_type,
+        frequency_ghz=req.frequency_ghz,
+        substrate=req.substrate,
+        thickness_mm=req.thickness_mm,
+    )
+
+    try:
+        result = build_from_params(params)
+    except ValueError as exc:
+        return {"error": str(exc)}
+
+    result["design_parameters"] = params
+    return result
+
+
+@app.post("/hfss/simulate")
+def simulate(req: AntennaSimulateRequest):
+    """Build an antenna, solve it in HFSS and return the S parameters."""
+
+    antenna_type = req.antenna_type.lower()
+
+    build_kwargs = {}
+
     if antenna_type == "patch":
+        substrate = SUBSTRATES.get(req.substrate)
+        if substrate is None:
+            return {"error": f"unknown substrate: {req.substrate}"}
+        build_kwargs = {
+            "thickness_mm": req.thickness_mm,
+            "er": substrate["er"],
+            "substrate": req.substrate,
+        }
 
-        substrate = SUBSTRATES[req.substrate]
-
-        dims = patch_dimensions(
-            req.frequency_ghz,
-            substrate["er"],
-            req.thickness_mm
+    try:
+        result = simulate_antenna(
+            antenna_type=antenna_type,
+            frequency_ghz=req.frequency_ghz,
+            results_dir=req.results_dir,
+            project_path=req.project_path,
+            port_count=req.port_count,
+            span_ghz=req.span_ghz,
+            sweep_count=req.sweep_count,
+            solve=req.solve,
+            **build_kwargs,
         )
+    except Exception as exc:      # noqa: BLE001 - report the failure cleanly
+        return {
+            "error": str(exc),
+            "antenna_type": antenna_type,
+            "frequency_ghz": req.frequency_ghz,
+        }
 
-        return create_patch_antenna(
-            dims["width_mm"],
-            dims["length_mm"]
-        )
+    simulation = result["simulation"]
 
-    if antenna_type == "monopole":
+    # the raw traces are large, the summary is what callers usually want
+    simulation.pop("s_parameters", None)
 
-        return create_monopole_antenna(
-            frequency_ghz=req.frequency_ghz
-        )
-
-    if antenna_type == "dipole":
-
-        return create_dipole_antenna(
-            frequency_ghz=req.frequency_ghz
-        )
-
-    if antenna_type == "yagi":
-
-        return create_yagi_uda_antenna_prototype(
-            frequency_ghz=req.frequency_ghz
-        )
-
-    return {
-        "error": "antenna type not implemented"
-    }
+    return result
 
 

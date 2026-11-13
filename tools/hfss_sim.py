@@ -43,14 +43,17 @@ def connect_desktop():
 
 
 def find_design(design_name, desktop=None):
-    """Locate a design by name across every project in the session.
+    """Locate the most recent design with a given name.
 
     ``GetActiveProject`` is not reliable right after a generator returns, so
-    every project is searched instead.
+    every project is searched instead. The last match wins because the
+    generators reuse the same design names.
     """
 
     if desktop is None:
         _, desktop = connect_desktop()
+
+    found = (None, None)
 
     for project in desktop.GetProjects():
         try:
@@ -61,11 +64,65 @@ def find_design(design_name, desktop=None):
         for design in designs:
             try:
                 if design.GetName() == design_name:
-                    return project, design
+                    found = (project, design)
             except Exception:  # noqa: BLE001 - skip unreadable designs
                 continue
 
-    return None, None
+    return found
+
+
+def open_project(path, desktop=None):
+    """Open an AEDT project, reusing it when it is already open.
+
+    AEDT refuses to open a project twice, and a crash leaves a stale lock
+    file behind, so both cases are handled here.
+    """
+
+    if desktop is None:
+        _, desktop = connect_desktop()
+
+    target = os.path.normcase(os.path.abspath(path))
+    target_dir = os.path.normcase(os.path.dirname(target))
+
+    for project in desktop.GetProjects():
+        try:
+            current = os.path.normcase(os.path.abspath(project.GetPath()))
+        except Exception:      # noqa: BLE001 - skip unreadable projects
+            continue
+
+        # GetPath returns the project folder, not the .aedt file
+        if current in (target, target_dir):
+            return project
+
+    lock = path + ".lock"
+    if os.path.exists(lock):
+        try:
+            os.remove(lock)
+        except OSError:
+            pass
+
+    return desktop.OpenProject(path)
+
+
+def last_error(desktop=None):
+    """Return the last error message from the AEDT message manager.
+
+    The COM exception raised by a failed call carries no text, so the
+    message manager is the only place the real reason shows up.
+    """
+
+    if desktop is None:
+        _, desktop = connect_desktop()
+
+    try:
+        messages = list(desktop.GetMessages("", "", 2))
+    except Exception:      # noqa: BLE001 - the message manager is optional
+        return ""
+
+    if not messages:
+        return ""
+
+    return str(messages[-1])
 
 
 # --------------------------------------------------------------------------
@@ -116,38 +173,125 @@ def _hz(value_hz):
 # --------------------------------------------------------------------------
 
 
+def sheet_geometry(editor, sheet_name):
+    """Return (face id, corner positions) of a sheet object.
+
+    Positions are returned as floats in the model units (mm).
+    """
+
+    face = list(editor.GetFaceIDsOfSheet(sheet_name))[0]
+
+    vertices = list(editor.GetVertexIDsFromFace(face))
+
+    positions = []
+    for vertex in vertices:
+        raw = list(editor.GetVertexPosition(vertex))
+        positions.append([float(value) for value in raw])
+
+    return face, positions
+
+
+def integration_line(positions, axis="Z"):
+    """Build a port line that lies on the sheet.
+
+    HFSS rejects a lumped port whose integration line does not lie on the
+    port sheet, so the line is derived from the real sheet extents instead
+    of from the nominal drawing parameters.
+
+    ``axis`` is the direction the port spans (the sheet normal is the
+    remaining axis).
+    """
+
+    if not positions:
+        raise ValueError("the port sheet has no geometry")
+
+    if axis.upper() == "Z":
+        index = 2
+    elif axis.upper() == "X":
+        index = 0
+    else:
+        raise ValueError(f"unsupported port axis: {axis}")
+
+    other = [i for i in range(3) if i != index]
+
+    mid = [
+        (min(p[i] for p in positions) + max(p[i] for p in positions)) / 2.0
+        for i in other
+    ]
+
+    spans = sorted(p[index] for p in positions)
+
+    start = [0.0, 0.0, 0.0]
+    end = [0.0, 0.0, 0.0]
+
+    for slot, coordinate in zip(other, mid):
+        start[slot] = coordinate
+        end[slot] = coordinate
+
+    start[index] = spans[0]
+    end[index] = spans[-1]
+
+    return tuple(start), tuple(end)
+
+
 def assign_lumped_port(
     design,
     name="LumpedPort1",
-    sheets=("PortSheet",),
-    start=(0.0, 0.0, 0.0),
-    end=(0.0, 0.0, 1.0),
+    sheet="PortSheet",
+    start=None,
+    end=None,
     impedance=50.0,
+    axis="Z",
 ):
-    """Assign a lumped port between two points on a sheet.
+    """Assign a lumped port on a sheet.
 
-    ``start``/``end`` are (x, y, z) in millimetres. The port spans the gap
-    between the two conductors the sheet is drawn on.
+    The port sheet is expected to span the gap between the two conductors
+    (ground plane and radiator). The integration line is taken from the real
+    sheet geometry; ``start``/``end`` can override it when needed.
     """
+
+    editor = design.SetActiveEditor("3D Modeler")
+
+    face, positions = sheet_geometry(editor, sheet)
+
+    if start is None or end is None:
+        start, end = integration_line(positions, axis=axis)
 
     module = design.GetModule("BoundarySetup")
 
     module.AssignLumpedPort([
         f"NAME:{name}",
-        "Objects:=", list(sheets),
-        "RenormalizeAllTerminals:=", True,
+        "Faces:=", [int(face)],
         "DoDeembed:=", False,
-        "RenormalizeThrough:=", True,
+        "RenormalizeAllTerminals:=", True,
+        [
+            "NAME:Modes",
+            [
+                "NAME:Mode1",
+                "ModeNum:=", 1,
+                "UseIntLine:=", True,
+                [
+                    "NAME:IntLine",
+                    "Start:=", [_mm(start[0]), _mm(start[1]), _mm(start[2])],
+                    "End:=", [_mm(end[0]), _mm(end[1]), _mm(end[2])],
+                ],
+                "AlignmentGroup:=", 0,
+                "CharImp:=", "Zpi",
+                "RenormImp:=", f"{_num(impedance)}ohm",
+            ],
+        ],
+        "ShowReporterFilter:=", False,
+        "ReporterFilter:=", [True],
         "Impedance:=", f"{_num(impedance)}ohm",
-        "X1:=", _mm(start[0]),
-        "Y1:=", _mm(start[1]),
-        "Z1:=", _mm(start[2]),
-        "X2:=", _mm(end[0]),
-        "Y2:=", _mm(end[1]),
-        "Z2:=", _mm(end[2]),
     ])
 
-    return name
+    return {
+        "name": name,
+        "face": int(face),
+        "start": start,
+        "end": end,
+        "impedance": impedance,
+    }
 
 
 def assign_perfect_e(design, name="PerfE1", objects=()):
@@ -259,8 +403,13 @@ def create_driven_setup(
     frequency_ghz=2.4,
     max_delta_s=0.1,
     max_passes=10,
+    setup_type="HFSSDriven",
 ):
     """Create a driven modal analysis setup.
+
+    ``InsertSetup`` takes the *setup type* as its first argument and the
+    setup name travels inside the payload, which is why the legacy
+    ``InsertSetup("Setup1", ...)`` form is rejected by AEDT.
 
     HFSS is strict about the property set it accepts, so the payload is
     tried from richest to leanest and the first one that HFSS accepts wins.
@@ -270,14 +419,6 @@ def create_driven_setup(
     module = design.GetModule("AnalysisSetup")
 
     candidates = [
-        [
-            f"NAME:{setup_name}",
-            "Properties:=", _setup_properties(
-                frequency_ghz, max_delta_s, max_passes,
-                _mesh_options(max_delta_s, max_passes),
-            ),
-            "NAME:PreSolveSetup",
-        ],
         [
             f"NAME:{setup_name}",
             "Properties:=", _setup_properties(
@@ -297,10 +438,13 @@ def create_driven_setup(
 
     for payload in candidates:
         try:
-            module.InsertSetup(setup_name, payload)
+            module.InsertSetup(setup_type, payload)
             setups = list(module.GetSetups() or [])
             if setup_name in setups:
                 return {"setup": setup_name, "setups": setups}
+            last_error = RuntimeError(
+                f"HFSS created {setups} instead of '{setup_name}'"
+            )
         except Exception as exc:      # noqa: BLE001 - try the next payload
             last_error = exc
 
@@ -346,8 +490,8 @@ def create_frequency_sweep(
     errors = []
 
     for args in (
-        (setup_name, sweep_name, properties),
         (setup_name, properties),
+        (setup_name, sweep_name, properties),
     ):
         try:
             module.InsertFrequencySweep(*args)
@@ -364,18 +508,24 @@ def create_frequency_sweep(
 
 
 def solve_setup(design, setup_name="Setup1", timeout_s=3600):
-    """Solve an analysis setup and return the solver messages."""
+    """Solve an analysis setup and return the solver messages.
 
-    messages = []
+    AEDT dies during a solve when the model is broken, which surfaces as an
+    RPC failure rather than a clean error, so the failure is reported with
+    the last AEDT message attached.
+    """
 
     try:
         design.Analyze(setup_name)
     except Exception as exc:      # noqa: BLE001 - fall back to the module call
-        module = design.GetModule("AnalysisSetup")
         try:
+            module = design.GetModule("AnalysisSetup")
             module.SolveSetup(setup_name)
         except Exception:
-            raise RuntimeError(f"HFSS could not solve '{setup_name}': {exc}")
+            raise RuntimeError(
+                f"HFSS could not solve '{setup_name}': {exc} "
+                f"(last AEDT message: {last_error()})"
+            )
 
     try:
         messages = list(design.GetModule("Solutions").GetValidISolutionList(True))
@@ -397,8 +547,13 @@ def create_report(
     solution,
     report_type="Modal Solution Data",
     display_type="Rectangular Plot",
+    context="Sweep",
 ):
-    """Create a rectangular plot report for a single expression."""
+    """Create a rectangular plot report for a single expression.
+
+    The AEDT call takes seven positional arguments; the named value pairs
+    travel as lists, not as separate positional arguments.
+    """
 
     module = design.GetModule("ReportSetup")
 
@@ -407,11 +562,9 @@ def create_report(
         report_type,
         display_type,
         solution,
-        "Domain:=", "Sweep",
-        "Freq:=", "All",
-        "Y Component:=", expression,
-        "X Component:=", "Freq",
-        "Plot Parts:=", [],
+        context,
+        ["Freq:=", "All"],
+        ["X Component:=", "Freq", "Y Component:=", [expression]],
     )
 
     return report_name
@@ -483,6 +636,68 @@ def parse_report_file(path):
     }
 
 
+def read_solution_data(
+    design,
+    expression,
+    solution,
+    context="Sweep",
+    report_type="Modal Solution Data",
+):
+    """Read the sweep data of one expression straight out of HFSS.
+
+    Exporting a report to a file is unreliable in this AEDT build (the
+    export silently produces nothing), so the numbers are pulled from the
+    solution data object instead. That object wants the expression as a
+    plain string and the sweep values with ``bSIvalue`` set for hertz.
+    """
+
+    module = design.GetModule("ReportSetup")
+
+    result = module.GetSolutionDataPerVariation(
+        report_type, solution, context, ["Freq:=", "All"], expression,
+    )
+
+    data = result[0] if isinstance(result, (list, tuple)) else result
+
+    expressions = [str(item) for item in data.GetDataExpressions()]
+    sweep_names = [str(item) for item in data.GetSweepNames()]
+
+    frequencies = []
+    if sweep_names:
+        frequencies = [
+            float(value)
+            for value in data.GetSweepValues(sweep_names[0], True)
+        ]
+
+    values = []
+    errors = []
+
+    for candidate in (expressions[0] if expressions else expression, expression):
+        try:
+            raw = data.GetRealDataValues(candidate, False)
+        except Exception as exc:      # noqa: BLE001 - try the next spelling
+            errors.append(exc)
+            continue
+
+        if not raw:
+            continue
+
+        first = raw[0] if isinstance(raw[0], (list, tuple)) else raw
+        values = [float(value) for value in first]
+        break
+
+    if not values and errors:
+        raise RuntimeError(
+            f"HFSS returned no data for '{expression}': {errors[-1]}"
+        )
+
+    return {
+        "expression": expressions[0] if expressions else expression,
+        "frequencies_hz": frequencies,
+        "values": values,
+    }
+
+
 def extract_s_parameters(
     design,
     solution,
@@ -490,9 +705,11 @@ def extract_s_parameters(
     port_count=1,
     prefix="S",
 ):
-    """Export every Sij of a solution and return the parsed data."""
+    """Extract every Sij of a solution and return the parsed data.
 
-    module = design.GetModule("ReportSetup")
+    Both the linear magnitude and the decibel form of each parameter are
+    collected, because the summary and the resonance search work in dB.
+    """
 
     os.makedirs(out_dir, exist_ok=True)
 
@@ -502,31 +719,44 @@ def extract_s_parameters(
         for j in range(1, port_count + 1):
             label = f"{prefix}{i}{j}"
             expression = f"S({i},{j})"
-            report_name = f"CircuitGen_{label}"
 
-            try:
-                module.DeleteReports([report_name])
-            except Exception:
-                pass
+            traces = {}
 
-            create_report(
-                design,
-                report_name,
-                expression,
-                solution,
-            )
+            for name, expr in (
+                (expression, expression),
+                (f"dB({expression})", f"dB({expression})"),
+            ):
+                try:
+                    data = read_solution_data(design, expr, solution)
+                except Exception as exc:      # noqa: BLE001 - per parameter
+                    traces[name] = None
+                    results.setdefault(label, {
+                        "expression": expression,
+                        "frequencies_hz": [],
+                        "traces": {},
+                        "errors": {},
+                    })["errors"][name] = str(exc)
+                    continue
 
-            path = os.path.join(out_dir, f"{label}.tab")
-            export_report(design, report_name, path)
+                traces[name] = data["values"]
 
-            parsed = parse_report_file(path)
+                if "frequencies_hz" not in results.get(label, {}):
+                    results[label] = {
+                        "expression": expression,
+                        "frequencies_hz": data["frequencies_hz"],
+                        "traces": {},
+                        "errors": {},
+                    }
 
-            results[label] = {
-                "expression": expression,
-                "path": path,
-                "frequencies_hz": parsed["frequencies_hz"],
-                "traces": parsed["traces"],
-            }
+                results[label]["traces"][name] = data["values"]
+
+            if label not in results:
+                results[label] = {
+                    "expression": expression,
+                    "frequencies_hz": [],
+                    "traces": {},
+                    "errors": {},
+                }
 
     return results
 
@@ -588,20 +818,37 @@ def _store_antenna_parameter(result, item):
     result[key.strip()] = value.strip()
 
 
+def _trace_values(data, prefer_db=True):
+    """Pick the trace to summarise (decibels when available)."""
+
+    traces = data.get("traces") or {}
+
+    if not traces:
+        return [], []
+
+    if prefer_db:
+        for name in traces:
+            if name.lower().startswith("db("):
+                return traces[name], data.get("frequencies_hz") or []
+
+    name = next(iter(traces))
+    return traces[name], data.get("frequencies_hz") or []
+
+
 def summarise_s_parameters(results, frequency_hz=None):
-    """Pick the S11 value at a given frequency (or the worst match)."""
+    """Pick the value of every S parameter at a given frequency.
+
+    The value at the requested frequency is reported, or the worst match
+    over the sweep when no frequency is given.
+    """
 
     summary = {}
 
     for label, data in results.items():
-        frequencies = data.get("frequencies_hz") or []
-        traces = data.get("traces") or {}
+        values, frequencies = _trace_values(data)
 
-        if not frequencies or not traces:
+        if not frequencies or not values:
             continue
-
-        name = next(iter(traces))
-        values = traces[name]
 
         if frequency_hz is not None:
             index = min(
@@ -627,27 +874,24 @@ def summarise_s_parameters(results, frequency_hz=None):
 
 
 def resonant_frequency(results, label="S11"):
-    """Interpolate the frequency where a dB trace crosses its minimum."""
+    """Interpolate the frequency where the dB trace reaches its minimum."""
 
     data = results.get(label)
 
     if not data:
         return None
 
-    frequencies = data.get("frequencies_hz") or []
-    traces = data.get("traces") or {}
+    values, frequencies = _trace_values(data)
 
-    if not frequencies or not traces:
+    if not frequencies or not values:
         return None
-
-    values = traces[next(iter(traces))]
 
     points = [
         (f, v) for f, v in zip(frequencies, values) if v is not None
     ]
 
     if len(points) < 3:
-        return None
+        return points[0][0] if points else None
 
     best = min(points, key=lambda item: item[1])
     index = points.index(best)

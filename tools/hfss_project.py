@@ -15,13 +15,3 @@ def create_hfss_project(name):
         "project": project_folder,
         "status": "created"
     }
-class HFSSProjectRequest(BaseModel):
-    project_name: str
-
-
-@app.post("/hfss/create_project")
-def create_hfss(req: HFSSProjectRequest):
-
-    from tools.hfss_project import create_hfss_project
-
-    return create_hfss_project(req.project_name)

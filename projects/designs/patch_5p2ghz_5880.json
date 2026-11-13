@@ -1,0 +1,42 @@
+{
+  "name": "patch_5p2ghz_5880",
+  "antenna_type": "patch",
+  "frequency_ghz": 5.2,
+  "substrate": "Rogers5880",
+  "er": 2.2,
+  "loss_tangent": 0.0009,
+  "thickness_mm": 1.575,
+  "feed_type": "edge_inset",
+  "overrides": {
+    "patch_width_mm": null,
+    "patch_length_mm": null,
+    "radiator_radius_mm": null
+  },
+  "derived": {
+    "frequency_ghz": 5.2,
+    "er": 2.2,
+    "thickness_mm": 1.575,
+    "lambda0_mm": 57.652,
+    "patch_width_mm": 22.8,
+    "patch_length_mm": 20.18,
+    "patch_x_mm": 8.0,
+    "patch_y_mm": 7.5,
+    "feed_width_mm": 4.7,
+    "feed_length_mm": 7.5,
+    "feed_x_mm": 17.05,
+    "board_x_mm": 38.8,
+    "board_y_mm": 35.68,
+    "port_x_mm": 17.05,
+    "port_z_mm": 1.575,
+    "air_x_mm": -10.0,
+    "air_y_mm": -10.0,
+    "air_z_mm": -5.765,
+    "air_size_x_mm": 58.8,
+    "air_size_y_mm": 55.68,
+    "air_size_z_mm": 22.34,
+    "checks": [],
+    "feed_impedance_ohm": 50.0,
+    "feed_width_50ohm_calculated_mm": 4.853
+  },
+  "checks": []
+}

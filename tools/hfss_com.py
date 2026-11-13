@@ -15,38 +15,19 @@ from tools.antenna_calcs import (
 # --------------------------------------------------------------------------
 # port definitions
 #
-# Each antenna generator creates a "PortSheet" rectangle. The lumped port is
-# drawn across that sheet, from the ground plane to the driven conductor.
-# Coordinates are millimetres.
+# Each antenna generator creates a "PortSheet" rectangle that spans the gap
+# between the ground plane and the driven conductor. The lumped port is
+# placed on that sheet; the integration line is derived from the real sheet
+# geometry because HFSS rejects a port whose line misses the sheet.
 # --------------------------------------------------------------------------
 
-PATCH_PORT = {
-    "sheets": ["PortSheet"],
-    "start": (29.3, 0.0, 0.0),
-    "end": (29.3, 0.0, 1.6),
-    "impedance": 50,
-}
+PATCH_PORT = {"sheet": "PortSheet", "impedance": 50}
 
-MONOPOLE_PORT = {
-    "sheets": ["PortSheet"],
-    "start": (0.0, 0.0, 0.0),
-    "end": (0.0, 0.0, 1.0),
-    "impedance": 50,
-}
+MONOPOLE_PORT = {"sheet": "PortSheet", "impedance": 50}
 
-DIPOLE_PORT = {
-    "sheets": ["PortSheet"],
-    "start": (0.0, 0.0, -0.5),
-    "end": (0.0, 0.0, 0.5),
-    "impedance": 50,
-}
+DIPOLE_PORT = {"sheet": "PortSheet", "impedance": 50}
 
-YAGI_PORT = {
-    "sheets": ["PortSheet"],
-    "start": (24.0, 0.0, -0.5),
-    "end": (24.0, 0.0, 0.5),
-    "impedance": 50,
-}
+YAGI_PORT = {"sheet": "PortSheet", "impedance": 50}
 
 
 def _run_simulation(
@@ -60,6 +41,8 @@ def _run_simulation(
     solve=True,
     span_ghz=0.5,
     sweep_count=101,
+    setup_name="Setup1",
+    sweep_name="Sweep1",
 ):
     """Excite, set up, solve and extract results for a generated antenna."""
 
@@ -70,10 +53,11 @@ def _run_simulation(
         "results_dir": results_dir,
     }
 
-    hfss_sim.assign_lumped_port(design, name="LumpedPort1", **port)
+    port_info = hfss_sim.assign_lumped_port(design, name="LumpedPort1", **port)
+    summary["port"] = port_info
 
     setup = hfss_sim.create_driven_setup(
-        design, "Setup1", frequency_ghz=frequency_ghz
+        design, setup_name, frequency_ghz=frequency_ghz
     )
     summary["setup"] = setup["setup"]
 
@@ -81,8 +65,8 @@ def _run_simulation(
 
     sweep = hfss_sim.create_frequency_sweep(
         design,
-        "Setup1",
-        "Sweep1",
+        setup_name,
+        sweep_name,
         start_ghz=window["start_ghz"],
         stop_ghz=window["stop_ghz"],
         count=window["count"],
@@ -100,10 +84,10 @@ def _run_simulation(
     if not solve:
         return summary
 
-    hfss_sim.solve_setup(design, "Setup1")
+    hfss_sim.solve_setup(design, setup_name)
     summary["solved"] = True
 
-    solution = "Setup1 : Sweep1"
+    solution = f"{setup_name} : {sweep_name}"
 
     data = hfss_sim.extract_s_parameters(
         design, solution, results_dir, port_count=port_count
@@ -116,7 +100,7 @@ def _run_simulation(
 
     try:
         summary["antenna_parameters"] = hfss_sim.extract_antenna_parameters(
-            design, "Setup1"
+            design, setup_name
         )
     except Exception as exc:      # noqa: BLE001 - antenna params are optional
         summary["antenna_parameters"] = {"error": str(exc)}
@@ -151,6 +135,112 @@ def create_project():
 
     finally:
         pythoncom.CoUninitialize()
+
+
+# --------------------------------------------------------------------------
+# build + simulate
+# --------------------------------------------------------------------------
+
+DESIGN_NAMES = {
+    "patch": "PatchAntenna",
+    "monopole": "MonopoleAntenna",
+    "dipole": "DipoleAntenna",
+    "yagi": "YagiUdaPrototype",
+}
+
+PORT_DEFINITIONS = {
+    "patch": PATCH_PORT,
+    "monopole": MONOPOLE_PORT,
+    "dipole": DIPOLE_PORT,
+    "yagi": YAGI_PORT,
+}
+
+DEFAULT_RESULTS_ROOT = r"C:\CircuitGen\results"
+
+
+def simulate_antenna(
+    antenna_type="monopole",
+    frequency_ghz=2.4,
+    results_dir=None,
+    project_path=None,
+    port_count=1,
+    span_ghz=0.5,
+    sweep_count=101,
+    solve=True,
+    **build_kwargs,
+):
+    """Build an antenna, excite it, solve it and extract the S parameters.
+
+    This is the end-to-end entry point: the geometry generator runs first,
+    then the lumped port, the driven modal setup and the frequency sweep are
+    created, the model is solved and the S parameters are read back.
+    """
+
+    key = str(antenna_type).lower()
+
+    if key not in DESIGN_NAMES:
+        raise ValueError(
+            f"unknown antenna type '{antenna_type}' "
+            f"(expected one of {', '.join(sorted(DESIGN_NAMES))})"
+        )
+
+    if key == "patch":
+        build = create_patch_antenna(
+            frequency_ghz=frequency_ghz, **build_kwargs
+        )
+    elif key == "monopole":
+        build = create_monopole_antenna(
+            frequency_ghz=frequency_ghz, **build_kwargs
+        )
+    elif key == "dipole":
+        build = create_dipole_antenna(
+            frequency_ghz=frequency_ghz, **build_kwargs
+        )
+    else:
+        build = create_yagi_uda_antenna_prototype(
+            frequency_ghz=frequency_ghz, **build_kwargs
+        )
+
+    # the generators tear COM down when they return, so re-arm it and pick
+    # up the design they just created
+    pythoncom.CoInitialize()
+
+    app = win32com.client.Dispatch("Ansoft.ElectronicsDesktop")
+    desktop = app.GetAppDesktop()
+
+    project, design = hfss_sim.find_design(DESIGN_NAMES[key], desktop)
+
+    if design is None:
+        raise RuntimeError(
+            f"could not find the '{DESIGN_NAMES[key]}' design in the session"
+        )
+
+    if not results_dir:
+        results_dir = os.path.join(DEFAULT_RESULTS_ROOT, key)
+
+    os.makedirs(results_dir, exist_ok=True)
+
+    simulation = _run_simulation(
+        design,
+        project,
+        PORT_DEFINITIONS[key],
+        frequency_ghz,
+        results_dir,
+        project_path=project_path,
+        port_count=port_count,
+        solve=solve,
+        span_ghz=span_ghz,
+        sweep_count=sweep_count,
+    )
+
+    return {
+        "antenna_type": key,
+        "frequency_ghz": frequency_ghz,
+        "build": build,
+        "simulation": simulation,
+    }
+
+
 def create_patch_antenna(
     width_mm=None,
     length_mm=None,
