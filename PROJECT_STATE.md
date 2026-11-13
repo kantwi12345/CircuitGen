@@ -175,6 +175,31 @@ optimisation against the solver).
 
 ## Antenna Generators
 
+### Parametric geometry (frequency-driven)
+
+All HFSS generators are now driven by the operating frequency instead of
+hard-coded dimensions:
+
+| Antenna | Rule | 2.4 GHz value (unchanged from the validated model) |
+|---|---|---|
+| Patch | W/L from `patch_dimensions`, feed width from 50 ohm microstrip synthesis (Hammerstad), feed length = lambda0/8, board/air box scale with lambda0 | feed 3.0 x 16.0 mm |
+| Monopole | radiator = lambda0/4, ground plane and radiation box scale with lambda0 | 31.25 mm |
+| Dipole | radiator = lambda0/2, radiation box scales with lambda0 | 62.5 mm |
+
+Modules:
+
+- `tools/antenna_calcs.py` - `patch_layout`, `monopole_layout`,
+  `dipole_layout`, `microstrip_width_50ohm`, `e24_round`
+- `tools/patch_builder.py` - parametric patch generator (substrate material
+  auto-selected: FR4_epoxy / rogers5880 / rogers4350b)
+- `validate_antennas.py` - builds each antenna in HFSS at 0.9 / 1.8 / 2.4 /
+  3.6 / 5.2 / 10 GHz and verifies the geometry HFSS actually created
+  against the intended layout (positions, sizes, connectivity, clearance)
+
+Validation result: **all antennas valid at all tested frequencies**.
+
+---
+
 ## Patch Antenna
 
 Status: Working

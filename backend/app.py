@@ -6,7 +6,7 @@ import os
 from backend.claude_client import ask_claude
 from tools.ads import ads_status, launch_ads, build_ads_circuit
 from tools.antenna_library import SUBSTRATES
-from tools.antenna_calcs import patch_dimensions
+from tools.antenna_calcs import patch_dimensions, patch_layout
 from tools.hfss_com import (
     create_project,
     create_patch_antenna,
@@ -115,17 +115,18 @@ def create_antenna(req: AntennaRequest):
 
     if req.antenna_type.lower() == "patch":
 
-        dims = patch_dimensions(
+        layout = patch_layout(
             req.frequency_ghz,
-            substrate["er"],
-            req.thickness_mm
+            er=substrate["er"],
+            h_mm=req.thickness_mm,
         )
 
         return {
             "antenna": "patch",
             "substrate": req.substrate,
             "frequency_ghz": req.frequency_ghz,
-            "dimensions": dims
+            "dimensions": layout,
+            "geometry_checks": layout["checks"] or ["all geometric checks passed"],
         }
 
     return {
@@ -136,19 +137,13 @@ def create_antenna(req: AntennaRequest):
 @app.post("/hfss/build_patch")
 def build_patch(req: AntennaRequest):
 
-    print("REQ:", req)
-
     substrate = SUBSTRATES[req.substrate]
 
-    dims = patch_dimensions(
-        req.frequency_ghz,
-        substrate["er"],
-        req.thickness_mm
-    )
-
     return create_patch_antenna(
-        dims["width_mm"],
-        dims["length_mm"]
+        frequency_ghz=req.frequency_ghz,
+        thickness_mm=req.thickness_mm,
+        er=substrate["er"],
+        substrate=req.substrate,
     )
 
 @app.post("/hfss/build_monopole")

@@ -1,5 +1,127 @@
+import os
+
 import pythoncom
 import win32com.client
+
+from tools import hfss_sim
+from tools.antenna_calcs import (
+    patch_dimensions,
+    patch_layout,
+    monopole_layout,
+    dipole_layout,
+)
+
+
+# --------------------------------------------------------------------------
+# port definitions
+#
+# Each antenna generator creates a "PortSheet" rectangle. The lumped port is
+# drawn across that sheet, from the ground plane to the driven conductor.
+# Coordinates are millimetres.
+# --------------------------------------------------------------------------
+
+PATCH_PORT = {
+    "sheets": ["PortSheet"],
+    "start": (29.3, 0.0, 0.0),
+    "end": (29.3, 0.0, 1.6),
+    "impedance": 50,
+}
+
+MONOPOLE_PORT = {
+    "sheets": ["PortSheet"],
+    "start": (0.0, 0.0, 0.0),
+    "end": (0.0, 0.0, 1.0),
+    "impedance": 50,
+}
+
+DIPOLE_PORT = {
+    "sheets": ["PortSheet"],
+    "start": (0.0, 0.0, -0.5),
+    "end": (0.0, 0.0, 0.5),
+    "impedance": 50,
+}
+
+YAGI_PORT = {
+    "sheets": ["PortSheet"],
+    "start": (24.0, 0.0, -0.5),
+    "end": (24.0, 0.0, 0.5),
+    "impedance": 50,
+}
+
+
+def _run_simulation(
+    design,
+    project,
+    port,
+    frequency_ghz,
+    results_dir,
+    project_path=None,
+    port_count=1,
+    solve=True,
+    span_ghz=0.5,
+    sweep_count=101,
+):
+    """Excite, set up, solve and extract results for a generated antenna."""
+
+    summary = {
+        "setup": None,
+        "sweep": None,
+        "solved": False,
+        "results_dir": results_dir,
+    }
+
+    hfss_sim.assign_lumped_port(design, name="LumpedPort1", **port)
+
+    setup = hfss_sim.create_driven_setup(
+        design, "Setup1", frequency_ghz=frequency_ghz
+    )
+    summary["setup"] = setup["setup"]
+
+    window = hfss_sim.default_sweep(frequency_ghz, span_ghz, sweep_count)
+
+    sweep = hfss_sim.create_frequency_sweep(
+        design,
+        "Setup1",
+        "Sweep1",
+        start_ghz=window["start_ghz"],
+        stop_ghz=window["stop_ghz"],
+        count=window["count"],
+    )
+    summary["sweep"] = sweep["sweep"]
+
+    if project_path:
+        try:
+            os.makedirs(os.path.dirname(project_path), exist_ok=True)
+            project.SaveAs(project_path, True)
+            summary["project_path"] = project_path
+        except Exception as exc:      # noqa: BLE001 - saving must not abort
+            summary["project_save_error"] = str(exc)
+
+    if not solve:
+        return summary
+
+    hfss_sim.solve_setup(design, "Setup1")
+    summary["solved"] = True
+
+    solution = "Setup1 : Sweep1"
+
+    data = hfss_sim.extract_s_parameters(
+        design, solution, results_dir, port_count=port_count
+    )
+    summary["s_parameters"] = data
+    summary["summary"] = hfss_sim.summarise_s_parameters(
+        data, frequency_hz=frequency_ghz * 1e9
+    )
+    summary["resonance_hz"] = hfss_sim.resonant_frequency(data, "S11")
+
+    try:
+        summary["antenna_parameters"] = hfss_sim.extract_antenna_parameters(
+            design, "Setup1"
+        )
+    except Exception as exc:      # noqa: BLE001 - antenna params are optional
+        summary["antenna_parameters"] = {"error": str(exc)}
+
+    return summary
 
 
 def create_project():
@@ -29,255 +151,60 @@ def create_project():
 
     finally:
         pythoncom.CoUninitialize()
-def create_patch_antenna(width_mm, length_mm):
+def create_patch_antenna(
+    width_mm=None,
+    length_mm=None,
+    frequency_ghz=2.4,
+    thickness_mm=1.6,
+    er=4.4,
+    substrate="FR4",
+):
 
-    pythoncom.CoInitialize()
+    """
+    Build the microstrip patch antenna.
 
-    try:
+    All dimensions are derived from the operating frequency and substrate
+    (feed width, feed length, board size, port sheet and air box scale
+    together), so the geometry stays valid at any frequency.
 
-        app = win32com.client.Dispatch(
-            "Ansoft.ElectronicsDesktop"
-        )
+    The implementation lives in tools/patch_builder.py.
+    """
 
-        desktop = app.GetAppDesktop()
+    from tools.patch_builder import (
+        create_patch_antenna as _create_patch_antenna
+    )
 
-        project = desktop.NewProject()
+    return _create_patch_antenna(
+        width_mm=width_mm,
+        length_mm=length_mm,
+        frequency_ghz=frequency_ghz,
+        thickness_mm=thickness_mm,
+        er=er,
+        substrate=substrate,
+    )
 
-        project.InsertDesign(
-            "HFSS",
-            "PatchAntenna",
-            "DrivenModal",
-            ""
-        )
-
-        design = project.SetActiveDesign(
-            "PatchAntenna"
-        )
-
-        editor = design.SetActiveEditor(
-            "3D Modeler"
-        )
-
-        substrate_x = 60
-        substrate_y = 60
-        substrate_h = 1.6
-
-        #
-        # FR4 Substrate
-        #
-        editor.CreateBox(
-            [
-                "NAME:BoxParameters",
-                "XPosition:=", "0mm",
-                "YPosition:=", "0mm",
-                "ZPosition:=", "0mm",
-                "XSize:=", f"{substrate_x}mm",
-                "YSize:=", f"{substrate_y}mm",
-                "ZSize:=", f"{substrate_h}mm"
-            ],
-            [
-                "NAME:Attributes",
-                "Name:=", "FR4_Substrate"
-            ]
-        )
-
-        #
-        # Assign FR4 material to substrate
-        #
-        editor.ChangeProperty(
-            [
-                "NAME:AllTabs",
-                [
-                    "NAME:Geometry3DAttributeTab",
-                    [
-                        "NAME:PropServers",
-                        "FR4_Substrate"
-                    ],
-                    [
-                        "NAME:ChangedProps",
-                        [
-                            "NAME:Material",
-                            "Value:=",
-                            "\"FR4_epoxy\""
-                        ]
-                    ]
-                ]
-            ]
-        )
-
-        #
-        # Ground Plane
-        #
-        editor.CreateRectangle(
-            [
-                "NAME:RectangleParameters",
-                "IsCovered:=", True,
-                "XStart:=", "0mm",
-                "YStart:=", "-0.46mm",
-                "ZStart:=", "0mm",
-                "Width:=", f"{substrate_x}mm",
-                "Height:=", f"{substrate_y + 0.46}mm",
-                "WhichAxis:=", "Z"
-            ],
-            [
-                "NAME:Attributes",
-                "Name:=", "GroundPlane"
-            ]
-        )
-
-        #
-        # Patch
-        #
-        patch_x = (substrate_x - width_mm) / 2
-        patch_y = (substrate_y - length_mm) / 2
-
-        editor.CreateRectangle(
-            [
-                "NAME:RectangleParameters",
-                "IsCovered:=", True,
-                "XStart:=", f"{patch_x}mm",
-                "YStart:=", f"{patch_y}mm",
-                "ZStart:=", f"{substrate_h}mm",
-                "Width:=", f"{width_mm}mm",
-                "Height:=", f"{length_mm}mm",
-                "WhichAxis:=", "Z"
-            ],
-            [
-                "NAME:Attributes",
-                "Name:=", "Patch"
-            ]
-        )
-          
-                #
-        # Feed Line
-        #
-
-        feed_width = 3.0
-        feed_x = 28.5
-        feed_y = 0.0
-        feed_length = 16.0
-
-        editor.CreateRectangle(
-            [
-                "NAME:RectangleParameters",
-                "IsCovered:=", True,
-                "XStart:=", "28.5mm",
-                "YStart:=", "0mm",
-                "ZStart:=", "1.6mm",
-                "Width:=", "3mm",
-                "Height:=", "16mm",
-                "WhichAxis:=", "Z"
-            ],
-            [
-                "NAME:Attributes",
-                "Name:=", "FeedLine"
-            ]
-               )
-    
-        # Port Sheet
-        #
-
-        editor.CreateRectangle(
-            [
-                "NAME:RectangleParameters",
-                "IsCovered:=", True,
-                "XStart:=", "28.5mm",
-                "YStart:=", "0mm",
-                "ZStart:=", "0mm",
-                "Width:=", "1.6mm",
-                "Height:=", "3mm",
-                "WhichAxis:=", "Y"
-            ],
-            [
-                "NAME:Attributes",
-                "Name:=", "PortSheet"
-            ]
-        )
-        
-        # Air Box
-        #
-        editor.CreateBox(
-            [
-                "NAME:BoxParameters",
-                "XPosition:=", "-40mm",
-                "YPosition:=", "-40mm",
-                "ZPosition:=", "-40mm",
-                "XSize:=", "140mm",
-                "YSize:=", "140mm",
-                "ZSize:=", "120mm"
-            ],
-            [
-                "NAME:Attributes",
-                "Name:=", "AirBox"
-            ]
-        )
-
-        #
-        # Boundary Setup
-        #
-        boundary_module = design.GetModule(
-            "BoundarySetup"
-        )
-
-        #
-        # Perfect E on Ground Plane
-        #
-        boundary_module.AssignPerfectE(
-            [
-                "NAME:PerfE1",
-                "Objects:=",
-                ["GroundPlane"],
-                "InfGroundPlane:=",
-                False
-            ]
-        )
-
-        #
-        # Radiation Boundary
-        #
-        boundary_module.AssignRadiation(
-            [
-                "NAME:Rad1",
-                "Objects:=",
-                ["AirBox"]
-            ]
-        )
-
-        #
-        # Lumped Port
-        #
-
-
-        #
-        # Analysis Setup
-        #
-
-        return {
-            "status": "Patch antenna ready for simulation",
-            "patch_width_mm": width_mm,
-            "patch_length_mm": length_mm,
-            "objects": [
-                "FR4_Substrate",
-                "GroundPlane",
-                "Patch",
-                "FeedLine",
-                "PortSheet",
-                "AirBox"
-            ],
-            "boundaries": [
-                "PerfE1",
-                "Rad1"
-            ],
-        }
-
-    finally:
-        pythoncom.CoUninitialize()
 
 def create_monopole_antenna(frequency_ghz=2.4):
 
+    """
+    Quarter-wave monopole.
+
+    The radiator length follows lambda0/4 and the ground plane and
+    radiation box scale with the wavelength, so the model is valid at any
+    frequency. The radiator base offset (1 mm along Z) is the validated
+    user-specified geometry.
+    """
+
     pythoncom.CoInitialize()
 
     try:
+
+        layout = monopole_layout(frequency_ghz)
+
+        if layout["checks"]:
+            raise ValueError(
+                "inconsistent monopole layout: " + "; ".join(layout["checks"])
+            )
 
         app = win32com.client.Dispatch(
             "Ansoft.ElectronicsDesktop"
@@ -302,12 +229,9 @@ def create_monopole_antenna(frequency_ghz=2.4):
             "3D Modeler"
         )
 
-        #
-        # Dimensions
-        #
-
-        monopole_length = 31.25
-        monopole_radius = 0.5
+        monopole_length = layout["monopole_length_mm"]
+        monopole_radius = layout["monopole_radius_mm"]
+        ground_half = layout["ground_half_mm"]
 
         #
         # Ground Plane
@@ -317,11 +241,11 @@ def create_monopole_antenna(frequency_ghz=2.4):
             [
                 "NAME:RectangleParameters",
                 "IsCovered:=", True,
-                "XStart:=", "-50mm",
-                "YStart:=", "-50mm",
+                "XStart:=", f"-{ground_half}mm",
+                "YStart:=", f"-{ground_half}mm",
                 "ZStart:=", "0mm",
-                "Width:=", "100mm",
-                "Height:=", "100mm",
+                "Width:=", f"{2 * ground_half}mm",
+                "Height:=", f"{2 * ground_half}mm",
                 "WhichAxis:=", "Z"
             ],
             [
@@ -375,18 +299,18 @@ def create_monopole_antenna(frequency_ghz=2.4):
         )
 
         #
-        # Port Sheet
+        # Port Sheet - feed gap at the base of the radiator
         #
 
         editor.CreateRectangle(
             [
                 "NAME:RectangleParameters",
                 "IsCovered:=", True,
-                "XStart:=", "-0.5mm",
+                "XStart:=", f"-{monopole_radius}mm",
                 "YStart:=", "0mm",
                 "ZStart:=", "0mm",
                 "Width:=", "1mm",
-                "Height:=", "1mm",
+                "Height:=", f"{2 * monopole_radius}mm",
                 "WhichAxis:=", "Y"
             ],
             [
@@ -402,12 +326,12 @@ def create_monopole_antenna(frequency_ghz=2.4):
         editor.CreateBox(
             [
                 "NAME:BoxParameters",
-                "XPosition:=", "-100mm",
-                "YPosition:=", "-100mm",
-                "ZPosition:=", "-100mm",
-                "XSize:=", "200mm",
-                "YSize:=", "200mm",
-                "ZSize:=", "250mm"
+                "XPosition:=", f"{layout['air_x_mm']}mm",
+                "YPosition:=", f"{layout['air_y_mm']}mm",
+                "ZPosition:=", f"{layout['air_z_mm']}mm",
+                "XSize:=", f"{layout['air_size_xy_mm']}mm",
+                "YSize:=", f"{layout['air_size_xy_mm']}mm",
+                "ZSize:=", f"{layout['air_size_z_mm']}mm"
             ],
             [
                 "NAME:Attributes",
@@ -441,27 +365,48 @@ def create_monopole_antenna(frequency_ghz=2.4):
             ]
         )
 
-
-
         return {
             "status": "Monopole geometry created",
             "frequency_ghz": frequency_ghz,
             "monopole_length_mm": monopole_length,
+            "monopole_radius_mm": monopole_radius,
+            "ground_half_mm": ground_half,
+            "lambda0_mm": layout["lambda0_mm"],
             "objects": [
                 "GroundPlane",
                 "Monopole",
                 "PortSheet",
                 "AirBox"
+            ],
+            "boundaries": [
+                "PerfE1",
+                "Rad1"
             ]
         }
 
     finally:
         pythoncom.CoUninitialize()
+
+
 def create_dipole_antenna(frequency_ghz=2.4):
+
+    """
+    Half-wave dipole with a feed gap.
+
+    The radiator length follows lambda0/2 and the radiation box scales with
+    the wavelength, so the model is valid at any frequency.
+    """
 
     pythoncom.CoInitialize()
 
     try:
+
+        layout = dipole_layout(frequency_ghz)
+
+        if layout["checks"]:
+            raise ValueError(
+                "inconsistent dipole layout: " + "; ".join(layout["checks"])
+            )
 
         app = win32com.client.Dispatch(
             "Ansoft.ElectronicsDesktop"
@@ -486,15 +431,10 @@ def create_dipole_antenna(frequency_ghz=2.4):
             "3D Modeler"
         )
 
-        #
-        # Dipole Parameters
-        #
-
-        dipole_length = 62.5
-        dipole_radius = 1.0
-
-        gap_length = 1.0
-        gap_radius = 1.0
+        dipole_length = layout["dipole_length_mm"]
+        dipole_radius = layout["dipole_radius_mm"]
+        gap_length = layout["gap_length_mm"]
+        gap_radius = layout["gap_radius_mm"]
 
         #
         # Dipole
@@ -505,7 +445,7 @@ def create_dipole_antenna(frequency_ghz=2.4):
                 "NAME:CylinderParameters",
                 "XCenter:=", "0mm",
                 "YCenter:=", "0mm",
-                "ZCenter:=", "-31.25mm",
+                "ZCenter:=", f"{-dipole_length / 2}mm",
                 "Radius:=", f"{dipole_radius}mm",
                 "Height:=", f"{dipole_length}mm",
                 "WhichAxis:=", "Z"
@@ -537,7 +477,7 @@ def create_dipole_antenna(frequency_ghz=2.4):
                 "NAME:CylinderParameters",
                 "XCenter:=", "0mm",
                 "YCenter:=", "0mm",
-                "ZCenter:=", "-0.5mm",
+                "ZCenter:=", f"{-gap_length / 2}mm",
                 "Radius:=", f"{gap_radius}mm",
                 "Height:=", f"{gap_length}mm",
                 "WhichAxis:=", "Z"
@@ -567,21 +507,16 @@ def create_dipole_antenna(frequency_ghz=2.4):
         #
         # Port Sheet
         #
-        # Same dimensions as gap.
-        #
 
         editor.CreateRectangle(
             [
                 "NAME:RectangleParameters",
                 "IsCovered:=", True,
-
                 "XStart:=", f"-{gap_radius}mm",
                 "YStart:=", "0mm",
-                "ZStart:=", f"-{gap_length/2}mm",
-
+                "ZStart:=", f"-{gap_length / 2}mm",
                 "Width:=", f"{gap_length}mm",
-                "Height:=", f"{2*gap_radius}mm",
-
+                "Height:=", f"{2 * gap_radius}mm",
                 "WhichAxis:=", "Y"
             ],
             [
@@ -597,12 +532,12 @@ def create_dipole_antenna(frequency_ghz=2.4):
         editor.CreateBox(
             [
                 "NAME:BoxParameters",
-                "XPosition:=", "-100mm",
-                "YPosition:=", "-100mm",
-                "ZPosition:=", "-100mm",
-                "XSize:=", "200mm",
-                "YSize:=", "200mm",
-                "ZSize:=", "250mm"
+                "XPosition:=", f"{layout['air_x_mm']}mm",
+                "YPosition:=", f"{layout['air_y_mm']}mm",
+                "ZPosition:=", f"{layout['air_z_mm']}mm",
+                "XSize:=", f"{layout['air_size_xy_mm']}mm",
+                "YSize:=", f"{layout['air_size_xy_mm']}mm",
+                "ZSize:=", f"{layout['air_size_z_mm']}mm"
             ],
             [
                 "NAME:Attributes",
@@ -626,8 +561,6 @@ def create_dipole_antenna(frequency_ghz=2.4):
             ]
         )
 
-
-
         return {
             "status": "Dipole geometry created",
             "frequency_ghz": frequency_ghz,
@@ -635,18 +568,22 @@ def create_dipole_antenna(frequency_ghz=2.4):
             "dipole_radius_mm": dipole_radius,
             "gap_length_mm": gap_length,
             "gap_radius_mm": gap_radius,
-            "port_width_mm": 2 * gap_radius,
-            "port_height_mm": gap_length,
+            "lambda0_mm": layout["lambda0_mm"],
             "objects": [
                 "Dipole",
                 "Gap",
                 "PortSheet",
                 "AirBox"
+            ],
+            "boundaries": [
+                "Rad1"
             ]
         }
 
     finally:
         pythoncom.CoUninitialize()
+
+
 def create_yagi_uda_antenna_prototype(frequency_ghz=2.5):
 
     pythoncom.CoInitialize()
