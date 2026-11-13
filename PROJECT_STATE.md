@@ -539,5 +539,70 @@ Then continue with:
 - Optimization engine
 
 The Yagi dimensions are currently provisional and should be validated against the original HFSS tutorial before production use.
+---
 
+# ADS Automation Status (verified experimentally)
+
+## What works (automated end to end)
+
+- Workspace creation in the exact ADS 2023 format (cloned from a reference
+  workspace): `workspace.ads`, `lib.defs`, `cds.lib`, `saved.wrkstate`,
+  `fileRefs.json`, `navigator.opt`, `*.prf`, `dds.cfg`, `de_sim.cfg`,
+  `hpeesofsim.cfg`, `dc_annotation_options.xml`, `default.pinproperties`
+- Local library `<ws>_lib` with `.oalib`, `netlists/<cell>.net`,
+  `<cell>_build_sheet.md`
+- ADS launch (dismissing the "Product Selection" bundle dialog if shown)
+- `File > Open > Workspace...` -> type the workspace folder -> "Select Folder"
+  (verified: ADS rewrites `de_sim.cfg` / `hpeesofsim.cfg` on load)
+- Toolbar "New Schematic" -> cell name -> Create
+  (verified: `<ws>_lib/<cell>/schematic/sch.oa` is created on disk)
+- AEL macro generation and playback (`Tools > Playback Macro...`) -
+  the macro is written, parsed by ADS and executed (ADS opens the
+  schematic view for the cell)
+
+## What does NOT work (verified)
+
+| Route | Result |
+|---|---|
+| ADS COM automation (`Keysight.Ads.*` ProgIDs) | Not registered - no COM server in the registry |
+| `ads.exe <workspace.ads>` | Ignored - ADS never touched the workspace |
+| `ads.exe <workspace_dir>` | Ignored - same result |
+| Windows file association for `.ads` / `.wrk` | Not registered |
+| Authoring a schematic cell | `sch.oa` is binary OpenAccess - not authorable |
+| `de_iff_add_component` from a macro | Places 0 items (needs the IFF symbol map) |
+| `File > Import > SPICE Netlist...` | Not in the Import menu in ADS 2023 |
+| `File > Import > Design...` | Requires an ADS design file (.dsn) - binary/undocumented |
+
+Verified by pointing `ads.exe` at the user's own known-good workspace
+(`C:\Users\Hulede\RF_PA_wrk`): ADS did not modify it, so the CLI route is
+unavailable in general, not just for generated workspaces.
+
+Consequence: the workspace is generated on disk in the exact ADS 2023 format
+(cloned file set from the reference workspace) and the user attaches it once
+via **File > Open Workspace...**, then creates the schematic cell per the
+documented ADS flow using the generated build sheet (or imports the netlist).
+
+## Remaining work for full one-click schematic automation
+
+1. **IFF import file** (Option B): ADS's IFF import machinery
+   (`de_iff_initialize_import`, `de_iff_add_component`, etc.) is the
+   native schematic-import path. Generating an IFF file from our
+   netlist requires learning the IFF record grammar from the exporter
+   (`iffexport.ael`, 275 KB of fputs records) - a substantial task.
+2. **GUI palette + canvas automation** (Option C): drive the palette
+   tree (Resistor, Capacitor, Inductor, DC Voltage Source), click the
+   canvas to place, edit the value text, and draw wires with Ctrl+W.
+   Feasible but fragile (pin coordinates, value-edit dialogs).
+3. **One-time macro recording (30 s, user-driven)**: record one
+   resistor placement, then template it. Fastest path to a working
+   full-schematic macro.
+
+## Next priorities
+
+1. Close the schematic-content gap (Option 3 above is the fastest)
+2. Feed the HFSS antenna port impedance into the passive matching network
+3. LNA / PA designs for the HFSS antennas
+4. Optimization engine
+
+Author: Michael Antwi
 Author: Michael Antwi
